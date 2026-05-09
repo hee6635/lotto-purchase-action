@@ -6,7 +6,7 @@
  * 이 실행이 끝나면 구매 결과는 GitHub Issue 1개로 정리됩니다.
  */
 
-const GAME_COUNT = 5;
+const GAME_COUNT = 1;
 
 export default async ({ purchaseAuto }) => {
   console.log('=== 01-auto-basic 시작 ===');
