@@ -7,41 +7,43 @@ export default async function(api) {
     let currentBalance = "0";
 
     try {
-        console.log("=== 🕵️‍♂️ [현장 검증] 스텔스 접속 및 텍스트 덤프 가동 ===");
+        console.log("=== 🕵️‍♂️ [정밀 수색] 예치금 주변 핀포인트 디버그 가동 ===");
 
         // 1. 👻 스텔스 설정 (로봇 탐지 우회)
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
-        // 2. 📡 메인 페이지 접속 (PC 버전)
-        console.log("📡 동행복권 PC 메인 접속 중...");
+        // 2. 📡 메인 페이지 접속
+        console.log("📡 동행복권 접속 중...");
         await page.goto("https://dhlottery.co.kr/common.do?method=main", { 
             waitUntil: "networkidle", 
             timeout: 60000 
         });
 
-        // 3. 💡 [사용자 제안 코드 추가] 로봇의 시야를 로그로 강제 출력
+        // 3. 💡 [사용자 제안 코드 적용] 예치금 주변 110자 정밀 스캔
+        console.log("🔍 예치금 단어 주변 환경을 정찰합니다...");
         const debugText = await page.evaluate(() => {
-            // 앞부분 1000자 정도를 긁어옵니다. (로그인 여부, 잔액 텍스트 포함 확인용)
-            return document.body.innerText.substring(0, 1000);
+            const full = document.body.innerText;
+            const idx = full.indexOf("예치금");
+            if (idx === -1) return "❌ [경보] 페이지 전체에서 '예치금' 키워드를 찾을 수 없음";
+            
+            // 키워드 발견 시 앞 10자, 뒤 100자를 잘라서 문맥 파악
+            return full.substring(Math.max(0, idx - 10), Math.min(full.length, idx + 100)).replace(/\n/g, ' ');
         });
-        
+
         console.log("==========================================");
-        console.log("👀 [사용자 디버그] 로봇이 보고 있는 실시간 텍스트:");
+        console.log("👀 [현장 보고서] 예치금 주변 텍스트:");
         console.log(debugText);
         console.log("==========================================");
 
-        // 4. ⏳ 잔액이 0원이 아닐 때까지 버티기 (사용자 제안 로직)
-        console.log("⏳ 데이터가 0원에서 숫자로 바뀌는지 지켜봅니다 (최대 10초)...");
+        // 4. ⏳ 잔액 추적 (사용자 제안 10초 대기 로직)
+        console.log("⏳ 숫자가 0원에서 변할 때까지 대기 중...");
         currentBalance = await page.evaluate(async () => {
             const delay = ms => new Promise(res => setTimeout(res, ms));
-            
             for (let i = 0; i < 10; i++) {
                 const text = document.body.innerText;
-                // '예치금' 뒤에 숫자가 오는지 확인
                 const match = text.match(/예치금\s*[:\n]?\s*([\d,]+)\s*원/);
-                
                 if (match) {
                     const val = match[1].replace(/,/g, '');
                     if (val !== "0" && val !== "") return val;
@@ -57,13 +59,13 @@ export default async function(api) {
         console.log(`❌ 작업 중 에러: ${e.message}`);
     }
 
-    // 5. 🚀 실전 구매 시도 (로그인 성공 메시지가 보인다면 진행)
+    // 5. 🚀 실전 구매 시도
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
         if (api.purchaseManual && currentBalance !== "0") {
             await api.purchaseManual([targetNumbers]);
-            console.log("✅ 구매 프로세스 완료");
+            console.log("✅ 구매 프로세스 가동 완료");
         }
     } catch (err) {
         console.log(`알림: ${err.message}`);
