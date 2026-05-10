@@ -4,78 +4,69 @@ export default async function(api) {
     const page = api.page || (api.session ? api.session.page : null);
     if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
-    let lottoBalance = "미확인";
-    let pensionBalance = "미확인";
     let currentBalance = "0";
 
-    const moneyGates = [
-        { name: "로또 구매창", url: "https://ol.dhlottery.co.kr/olotto/game/game645.do" },
-        { name: "연금복권 구매창", url: "https://el.dhlottery.co.kr/pension720.do?method=pension720Buy" }
-    ];
-
     try {
-        console.log("=== 🕵️‍♂️ [테스트 모드] 전 구역 교차 검증 스캔 가동 ===");
+        console.log("=== 🕵️‍♂️ [연금복권 전용] 미스터리 잔액 추적 가동 ===");
 
-        // 1. 신분 위장 (스텔스 유지)
+        // 1. 👻 스텔스 설정 (로봇 탐지 차단)
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
-        for (const gate of moneyGates) {
-            console.log(`📡 [테스트 중] ${gate.name} 진입 중...`);
-            try {
-                await page.goto(gate.url, { waitUntil: 'networkidle', timeout: 30000 });
-                await page.waitForTimeout(3000); 
+        // 2. 📡 연금복권 구매 페이지 직행
+        console.log("📡 연금복권 구매 페이지 접속 중...");
+        await page.goto("https://el.dhlottery.co.kr/pension720.do?method=pension720Buy", { 
+            waitUntil: 'networkidle', 
+            timeout: 40000 
+        });
 
-                const found = await page.evaluate(() => {
-                    const text = document.body.innerText;
-                    const match = text.match(/(?:보유예치금|예치금)\s*([\d,]+)\s*원/);
-                    return match ? match[1].replace(/,/g, '') : "0";
-                });
+        // 3. 🔍 [현장 디버그] '예치금' 단어가 포함된 모든 줄을 출력
+        console.log("⏳ 화면 로딩 및 잔액 데이터 수신 대기 (최대 10초)...");
+        
+        const finalReport = await page.evaluate(async () => {
+            const delay = ms => new Promise(res => setTimeout(res, ms));
+            let foundBalance = "0";
+            let debugLog = "";
 
-                // 💡 [테스트 포인트] 찾았어도 멈추지 않고 기록만 남깁니다.
-                if (gate.name === "로또 구매창") {
-                    lottoBalance = found;
-                    console.log(`📍 로또 창 확인 결과: ${found}원`);
-                } else {
-                    pensionBalance = found;
-                    console.log(`📍 연금복권 창 확인 결과: ${found}원`);
+            for (let i = 1; i <= 10; i++) {
+                const fullText = document.body.innerText;
+                
+                // '예치금', '잔액', '보유' 단어가 포함된 문장 찾기
+                const lines = fullText.split('\n').filter(line => 
+                    line.includes('예치금') || line.includes('보유') || line.includes('잔액')
+                );
+
+                if (lines.length > 0) {
+                    debugLog = `[${i}초차 확인]: ` + lines.join(' | ');
+                    
+                    // 정밀 정규식으로 숫자 추출 시도
+                    const match = fullText.match(/(?:보유예치금|예치금|잔액)\s*[:\n]?\s*([\d,]+)\s*원/);
+                    if (match && match[1].replace(/,/g, '') !== "0") {
+                        foundBalance = match[1].replace(/,/g, '');
+                        break; // 0이 아닌 숫자를 찾으면 즉시 종료
+                    }
                 }
-
-                if (found !== "0") currentBalance = found; // 유효한 잔액 업데이트
-
-            } catch (e) {
-                console.log(`⚠️ ${gate.name} 스캔 실패: ${e.message}`);
+                await delay(1000);
             }
-        }
+            return { balance: foundBalance, log: debugLog };
+        });
 
-        console.log("------------------------------------------");
-        console.log(`📊 [최종 테스트 보고서]`);
-        console.log(`1. 로또 페이지 잔액: ${lottoBalance}원`);
-        console.log(`2. 연금 페이지 잔액: ${pensionBalance}원`);
-        console.log("------------------------------------------");
+        console.log("==========================================");
+        console.log("👀 [연금복권 현장 수사 보고]");
+        console.log(finalReport.log || "관련 키워드를 찾지 못함");
+        console.log("==========================================");
+
+        currentBalance = finalReport.balance;
+        console.log(`✅ 최종 포착 잔액: ${currentBalance}원`);
 
     } catch (e) {
-        console.log(`❌ 테스트 공정 전체 에러: ${e.message}`);
+        console.log(`❌ 연금복권 수색 중 에러: ${e.message}`);
     }
 
-    // 🚀 실전 구매 프로세스
-    try {
-        const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
-        const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-        if (api.purchaseManual && currentBalance !== "0") {
-            await api.purchaseManual([targetNumbers]);
-            console.log(`✅ 구매 시도 완료 (최종 잔액: ${currentBalance}원)`);
-        }
-    } catch (err) {
-        console.log(`알림: ${err.message}`);
-    }
-
-    // 결과 저장
+    // 결과 저장 (어플 화면 동기화)
     fs.writeFileSync('result.json', JSON.stringify({ 
         balance: currentBalance, 
-        lotto: lottoBalance,
-        pension: pensionBalance,
         last_run: new Date().toISOString() 
     }));
 
