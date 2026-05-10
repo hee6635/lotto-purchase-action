@@ -1,6 +1,6 @@
-const fs = require('fs');
+import fs from 'fs';
 
-module.exports = async (api) => {
+export default async (api) => {
     // 1. 조종기(page) 확보 (index.js에서 무사히 전달됨!)
     const page = api.page || (api.session ? api.session.page : null);
     
