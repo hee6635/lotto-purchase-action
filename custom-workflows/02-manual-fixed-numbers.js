@@ -7,34 +7,42 @@ export default async function(api) {
     let currentBalance = "0";
 
     try {
-        console.log("=== 🎯 [정밀 타격] 예치금 데이터만 추출 ===");
+        console.log("=== 🎯 [정밀 타격] 엉뚱한 숫자 방지 & 진짜 잔액 추출 ===");
 
-        // 1. 신분 위장 (Headless 탐지 방어)
+        // 1. 신분 위장
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
-        // 2. 💡 [사용자 제안] API 주소로 직접 진입
+        // 2. API 주소 직접 진입
         const apiTarget = 'https://dhlottery.co.kr/user.do?method=getUserBalance';
         const response = await page.goto(apiTarget, { waitUntil: 'networkidle', timeout: 20000 });
         const rawText = await response.text();
 
-        // 3. 🔍 '예치금' 관련 숫자만 추려내기
-        // 응답이 JSON {"cashBalance":"10,000"} 이든, 단순 텍스트든 숫자만 뽑습니다.
-        const match = rawText.match(/[\d,]+/);
-        if (match) {
-            currentBalance = match[0].replace(/,/g, '');
-            console.log(`💰 포착된 예치금: ${currentBalance}원`);
+        // 3. 🔍 [정밀 분석] "cashBalance" 키워드 뒤에 오는 숫자만 타격
+        // 예: {"cashBalance":"10,000", ...} 에서 10,000만 쏙 빼옴
+        const balanceMatch = rawText.match(/"cashBalance"\s*:\s*"([0-9,]+)"/);
+        
+        if (balanceMatch && balanceMatch[1]) {
+            currentBalance = balanceMatch[1].replace(/,/g, '');
+            console.log(`💰 [월척 포착] 진짜 예치금: ${currentBalance}원`);
         } else {
-            console.log("❌ 데이터에서 숫자를 찾을 수 없음");
-            console.log("원본 응답 확인:", rawText.substring(0, 100)); // 짧게 확인
+            // 만약 JSON 형식이 아닐 경우를 대비한 2차 수색
+            const backupMatch = rawText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
+            currentBalance = backupMatch ? backupMatch[1].replace(/,/g, '') : "0";
+            
+            if (currentBalance === "0") {
+                console.log("⚠️ 정밀 타격 실패. 원본 데이터 확인:", rawText.substring(0, 150));
+            } else {
+                console.log(`💰 [백업 포착] 예치금: ${currentBalance}원`);
+            }
         }
 
     } catch (e) {
-        console.log(`❌ 에러 발생: ${e.message}`);
+        console.log(`❌ 에러: ${e.message}`);
     }
 
-    // 4. 로또 구매 프로세스
+    // 4. 로또 구매 프로세스 (구매 단계는 이미 검증 완료!)
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
