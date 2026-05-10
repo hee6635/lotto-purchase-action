@@ -1,14 +1,15 @@
 name: 로또 구매 (수동 + 스케줄)
 on:
   schedule:
-    - cron: '0 3 * * 0' # 매주 일요일 한국시간 12:00
+    # 매주 일요일 한국 시간 12:00 (UTC 03:00)
+    - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
       command_data:
         description: '명령 종류 (buy_now)'
         required: false
         default: 'buy_now'
-      lotto_numbers: # 👈 [신규] 어플에서 보낸 번호를 담는 그릇
+      lotto_numbers:
         description: '구매할 번호 (예: 1,2,3,4,5,6)'
         required: false
         default: ''
@@ -36,7 +37,7 @@ jobs:
           github-token: ${{ github.token }}
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # 💡 번호 일치를 위해 필요시 '수동 전용' 스크립트로 경로를 바꿀 수 있습니다.
-          workflow-file: custom-workflows/01-auto-basic.js
-          # 아래는 어플에서 보낸 번호를 환경변수로 넘겨주는 설정 (선택 사항)
-          # lotto-numbers: ${{ github.event.inputs.lotto_numbers }} 
+          # 💡 [수정 1] 자동 대신 '수동 고정 번호' 스크립트를 사용합니다.
+          workflow-file: custom-workflows/02-manual-fixed-numbers.js
+          # 💡 [수정 2] 어플에서 보낸 번호를 로봇 스크립트에게 직접 전달합니다.
+          lotto-numbers: ${{ github.event.inputs.lotto_numbers }}
