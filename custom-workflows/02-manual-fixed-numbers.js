@@ -5,67 +5,63 @@ export default async function(api) {
     if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
     let currentBalance = "0";
+    let status = "success";
 
     try {
-        console.log("=== 🕵️‍♂️ [정밀 수색] 예치금 주변 핀포인트 디버그 가동 ===");
+        console.log("=== 📡 [사용자 제안] API 직접 호출(getUserBalance) 작전 ===");
 
-        // 1. 👻 스텔스 설정 (로봇 탐지 우회)
+        // 1. 👻 스텔스 설정 (API 호출 시 로봇 의심 차단)
         await page.addInitScript(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
-        // 2. 📡 메인 페이지 접속
-        console.log("📡 동행복권 접속 중...");
-        await page.goto("https://dhlottery.co.kr/common.do?method=main", { 
-            waitUntil: "networkidle", 
-            timeout: 60000 
-        });
+        // 2. 세션 유지를 위해 우선 메인 페이지 안착
+        console.log("📡 세션 유지를 위해 메인 접속...");
+        await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle" });
 
-        // 3. 💡 [사용자 제안 코드 적용] 예치금 주변 110자 정밀 스캔
-        console.log("🔍 예치금 단어 주변 환경을 정찰합니다...");
-        const debugText = await page.evaluate(() => {
-            const full = document.body.innerText;
-            const idx = full.indexOf("예치금");
-            if (idx === -1) return "❌ [경보] 페이지 전체에서 '예치금' 키워드를 찾을 수 없음";
-            
-            // 키워드 발견 시 앞 10자, 뒤 100자를 잘라서 문맥 파악
-            return full.substring(Math.max(0, idx - 10), Math.min(full.length, idx + 100)).replace(/\n/g, ' ');
-        });
-
-        console.log("==========================================");
-        console.log("👀 [현장 보고서] 예치금 주변 텍스트:");
-        console.log(debugText);
-        console.log("==========================================");
-
-        // 4. ⏳ 잔액 추적 (사용자 제안 10초 대기 로직)
-        console.log("⏳ 숫자가 0원에서 변할 때까지 대기 중...");
-        currentBalance = await page.evaluate(async () => {
-            const delay = ms => new Promise(res => setTimeout(res, ms));
-            for (let i = 0; i < 10; i++) {
-                const text = document.body.innerText;
-                const match = text.match(/예치금\s*[:\n]?\s*([\d,]+)\s*원/);
-                if (match) {
-                    const val = match[1].replace(/,/g, '');
-                    if (val !== "0" && val !== "") return val;
-                }
-                await delay(1000);
+        // 3. 💡 [사용자 제안 코드 적용] API 직접 찌르기
+        console.log("🔍 서버에게 직접 잔액을 물어봅니다...");
+        const balanceResponse = await page.evaluate(async () => {
+            try {
+                const res = await fetch('https://dhlottery.co.kr/user.do?method=getUserBalance', {
+                    credentials: 'include' // 로그인 쿠키 동봉
+                });
+                return await res.text(); // 일단 텍스트로 다 받아봄
+            } catch (e) {
+                return `ERROR: ${e.message}`;
             }
-            return "0";
         });
 
-        console.log(`✅ 최종 포착 잔액: ${currentBalance}원`);
+        console.log("==========================================");
+        console.log("👀 [API 서버 응답 원본]:");
+        console.log(balanceResponse);
+        console.log("==========================================");
+
+        // 4. 응답 해석 (JSON인지, 숫자만 있는지, 에러인지 판별)
+        if (balanceResponse.includes("ERROR")) {
+            console.log("❌ API 호출 자체 실패");
+        } else {
+            // 숫자만 골라내기 (예: {"balance":10000} 혹은 그냥 10000)
+            const match = balanceResponse.match(/\d+/g);
+            if (match) {
+                currentBalance = match[match.length - 1]; // 가장 마지막에 나오는 숫자를 잔액으로 추정
+                console.log(`✅ API에서 낚아챈 잔액: ${currentBalance}원`);
+            }
+        }
 
     } catch (e) {
         console.log(`❌ 작업 중 에러: ${e.message}`);
+        status = "fail";
     }
 
-    // 5. 🚀 실전 구매 시도
+    // 🚀 실전 구매 프로세스 (API가 성공했거나 로그인이 확인되면 시도)
+    console.log("🚀 로또 실전 구매 시도...");
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-        if (api.purchaseManual && currentBalance !== "0") {
+        if (api.purchaseManual && (currentBalance !== "0" || status === "success")) {
             await api.purchaseManual([targetNumbers]);
-            console.log("✅ 구매 프로세스 가동 완료");
+            console.log("✅ 구매 시도 완료");
         }
     } catch (err) {
         console.log(`알림: ${err.message}`);
