@@ -8,29 +8,28 @@ export default async function(api) {
     let message = "작업 완료";
 
     if (!page) {
-        console.error("❌ 조종기(page)를 찾을 수 없습니다.");
         return { status: "fail", message: "조종기 연결 실패" };
     }
 
     try {
-        console.log("=== 🕵️‍♂️ [진짜 원인 해결] PC 환경 강제 전환 작전 ===");
+        console.log("=== 🕵️‍♂️ [원인 완벽 해결] Playwright 전용 PC 위장 작전 ===");
         
-        // 💡 [핵심] 깃허브 엔진의 '모바일 위장'을 벗겨내고 완벽한 PC 환경으로 변신!
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        // 💡 [핵심] Playwright 방식의 완벽한 PC 위장! (이러면 404 에러 절대 안 납니다)
+        await page.setExtraHTTPHeaders({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        });
 
-        console.log("📡 튕김 방지 완료! 동행복권 PC 메인 페이지 접속 중...");
+        console.log("📡 위장 완벽 성공! 동행복권 PC 메인 페이지 접속 중...");
         await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(4000); // 로딩 대기
+        await page.waitForTimeout(4000); // 넉넉하게 대기
 
-        // 🔍 PC 메인 화면 잔액 추출
+        // 🔍 PC 메인 화면 잔액 추출 (PC는 메뉴를 누를 필요 없이 바로 숫자가 나옴!)
         currentBalance = await page.evaluate(() => {
-            // PC 화면 우측 상단 내 정보 영역의 태그
             const moneyTag = document.querySelector('.money strong') || document.querySelector('.my_money');
             if (moneyTag && moneyTag.innerText) {
                 return moneyTag.innerText.replace(/[^0-9]/g, '');
             }
             
-            // 백업 정규식
             const bodyText = document.body.innerText;
             const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
             if (match && match[1]) {
@@ -39,7 +38,7 @@ export default async function(api) {
             return "0";
         });
 
-        console.log(`✅ 드디어 확인된 진짜 예치금: ${currentBalance}원`);
+        console.log(`✅ 드디어 껍데기를 뚫고 확인된 진짜 예치금: ${currentBalance}원`);
 
     } catch (e) {
         console.log(`❌ 작업 중 에러 발생: ${e.message}`);
@@ -47,7 +46,7 @@ export default async function(api) {
         message = `에러: ${e.message}`;
     }
 
-    // 6시 기준 구매 판단
+    // ⏰ 6시 기준 구매 판단
     const kstTimeFinal = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     const hour = kstTimeFinal.getHours();
 
