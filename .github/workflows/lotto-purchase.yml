@@ -1,10 +1,16 @@
 name: 로또 구매 (수동 + 스케줄)
 on:
   schedule:
-    # 매주 일요일 UTC 03:00 (한국 시간 일요일 12:00)
-    # https://elmah.io/tools/cron-parser/
+    # 매주 일요일 한국 시간 12:00 (UTC 03:00)
     - cron: '0 3 * * 0'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
+    # ─── 💡 어플에서 보내는 신호를 받기 위한 설정 추가 ───
+    inputs:
+      command_data:
+        description: '앱에서 전송된 명령 (예: buy_now)'
+        required: false
+        default: 'buy_now'
+    # ────────────────────────────────────────────────
 
 permissions:
   contents: read
@@ -13,6 +19,7 @@ permissions:
 jobs:
   purchase:
     runs-on: ubuntu-latest
+    # Playwright 환경 설정
     container: mcr.microsoft.com/playwright:v1.55.1-jammy
     steps:
       - name: Checkout code
@@ -29,7 +36,5 @@ jobs:
           github-token: ${{ github.token }}
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # 아래 예제 중 하나만 활성화해서 사용하세요.
+          # 💡 현재 활성화된 워크플로 파일 (필요시 아래 경로를 수정하세요)
           workflow-file: custom-workflows/01-auto-basic.js
-          # workflow-file: custom-workflows/02-manual-fixed-numbers.js
-          # workflow-file: custom-workflows/03-auto-plus-manual.js
