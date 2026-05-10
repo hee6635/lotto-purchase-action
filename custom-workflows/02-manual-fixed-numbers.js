@@ -13,37 +13,24 @@ export default async (api) => {
     }
 
     try {
-        console.log("=== 📱 [수사 시작] 예치금 정밀 추적 가동 ===");
+        console.log("=== 📱 [정상 가동] 예치금 정밀 추적 ===");
         
-        // 1. 한국 시간 동기화
         const kstTime = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-        console.log(`⏰ 현재 로봇이 인지하는 한국 시간: ${kstTime.toLocaleString('ko-KR')}`);
-
-        // 2. 마이페이지 접속 및 대기
-        console.log("📡 확실한 조회를 위해 마이페이지(PC버전 주소) 접속 중...");
-        await page.goto("https://dhlottery.co.kr/user.do?method=myPage", { waitUntil: "networkidle", timeout: 30000 });
         
-        // 💡 충분히 기다립니다 (5초)
-        await page.waitForTimeout(5000); 
+        // 💡 [수정됨] 에러 안 나는 진짜 모바일 메인 페이지로 접속!
+        console.log("📡 진짜 모바일 메인 페이지로 접속 중...");
+        await page.goto("https://m.dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle", timeout: 30000 });
+        
+        await page.waitForTimeout(4000); // 숫자 로딩을 위해 4초 대기
 
-        // 3. 🔍 [핵심] 로봇 시야 확인 (화면 전체 텍스트 로그 출력)
-        const allText = await page.evaluate(() => document.body.innerText);
-        console.log("------------------------------------------");
-        console.log("👀 [로봇이 보고 있는 화면 텍스트 (앞부분 800자)]");
-        console.log(allText.substring(0, 800));
-        console.log("------------------------------------------");
-
-        // 4. 예치금 정밀 스크래핑 (단어 매칭 강화)
+        // 🔍 예치금 추출 (정규식은 완벽히 작동하는 것 확인됨)
         currentBalance = await page.evaluate(() => {
             const bodyText = document.body.innerText;
-            
-            // "예치금" 단어 바로 뒤에 오는 숫자만 정규식으로 정밀 타겟팅
-            // 예: "예치금 10,000원" 혹은 "예치금 : 10,000원"
             const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]{1,10})\s*원/);
             
             if (match && match[1]) {
                 const num = match[1].replace(/[^0-9]/g, '');
-                return num === "0" ? "0" : num; // 0이면 0, 아니면 숫자 반환
+                return num; 
             }
             return "--";
         });
@@ -56,9 +43,39 @@ export default async (api) => {
         message = `에러: ${e.message}`;
     }
 
-    // 5. 구매 방어 로직 (한국 시간 기준 00~06시)
+    // 구매 불가 시간 방어 로직 (00~06시)
     const kstTimeFinal = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     const hour = kstTimeFinal.getHours();
+
+    if (hour >= 0 && hour < 6) {
+        console.log("⚠️ 점검 시간대(00-06시)이므로 구매는 생략하고 잔액만 저장합니다.");
+        message = "잔액 동기화 완료 (점검시간)";
+    } else {
+        console.log("🚀 구매 가능 시간입니다. 로또 구매 시도 중...");
+        try {
+            const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
+            const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
+            
+            if (api.purchaseManual) {
+                 await api.purchaseManual([targetNumbers]); 
+                 console.log(`✅ 로또 구매 성공! 번호: [${targetNumbers.join(', ')}]`);
+                 message = "로또 구매 성공!";
+            }
+        } catch (error) {
+            console.log(`❌ 구매 에러: ${error.message}`);
+            message = `구매 에러: ${error.message}`;
+            status = "fail";
+        }
+    }
+
+    // 결과 저장
+    try {
+        const resultData = { balance: currentBalance, status: status, message: message, last_run: new Date().toISOString() };
+        fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
+    } catch (e) {}
+
+    return { status, message, balance: currentBalance };
+};
 
     if (hour >= 0 && hour < 6) {
         console.log("⚠️ 점검 시간대(00-06시)이므로 구매는 생략하고 잔액만 저장합니다.");
