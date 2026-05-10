@@ -13,39 +13,45 @@ export default async function(api) {
     }
 
     try {
-        console.log("=== 🎯 [사용자님 아이디어] 연금복권 구매창 우회 타격 ===");
+        console.log("=== 📱 [최종] 모바일 메인 데이터 수신 대기 작전 ===");
         
-        // 💡 로또 구매창의 심야 차단을 피해, 24시간 열려있는 연금복권 구매창으로 진입!
-        console.log("📡 연금복권 실구매창 주소로 접속 중...");
-        await page.goto("https://el.dhlottery.co.kr/game/TotalGame.do?gameId=T720", { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(4000); // 넉넉하게 4초 대기
+        console.log("📡 모바일 메인 페이지로 접속 중...");
+        await page.goto("https://m.dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle", timeout: 30000 });
+        
+        console.log("⏳ 화면은 떴습니다! 서버에서 진짜 잔액 숫자를 보내줄 때까지 감시합니다 (최대 10초)...");
 
-        // 🔍 [추적 모드] 연금복권 구매창 텍스트 확인
-        const allText = await page.evaluate(() => document.body.innerText);
-        console.log("------------------------------------------");
-        console.log("👀 [연금복권 구매창 텍스트 추출]");
-        console.log(allText.substring(0, 1000));
-        console.log("------------------------------------------");
-
-        // 🔍 예치금 추출
-        currentBalance = await page.evaluate(() => {
-            // 1. 연금복권 구매창 내의 잔액 태그 강제 확인
-            const moneyEl = document.querySelector('#Money') || document.querySelector('#payAmt') || document.querySelector('.money');
-            if (moneyEl && moneyEl.innerText && moneyEl.innerText.includes(',')) {
-                return moneyEl.innerText.replace(/[^0-9]/g, '');
-            }
-            
-            // 2. 백업: '예치금' 주변 혹은 '원' 앞의 숫자 긁어오기
-            const bodyText = document.body.innerText;
-            const match = bodyText.match(/([0-9,]{2,10})\s*원/); 
-            if (match && match[1]) {
-                return match[1].replace(/[^0-9]/g, '');
-            }
-            
-            return "추출실패";
+        // 💡 [핵심] 1초마다 화면을 확인하며 0원이 진짜 금액으로 바뀌는지 감시!
+        currentBalance = await page.evaluate(async () => {
+            return new Promise((resolve) => {
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    attempts++;
+                    const bodyText = document.body.innerText;
+                    const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
+                    
+                    if (match && match[1]) {
+                        const val = match[1].replace(/[^0-9]/g, '');
+                        // 0이 아니면 가짜 껍데기가 진짜로 바뀐 것! 즉시 퇴근!
+                        if (val !== "0" && val !== "") {
+                            clearInterval(interval);
+                            resolve(val);
+                        }
+                    }
+                    
+                    // 10초가 지나도 0원이면 점검시간이라 DB가 죽은 것임
+                    if (attempts >= 10) {
+                        clearInterval(interval);
+                        resolve(match && match[1] ? match[1].replace(/[^0-9]/g, '') : "추출실패");
+                    }
+                }, 1000); // 1초마다 확인
+            });
         });
 
         console.log(`✅ 최종 추출된 예치금 숫자: ${currentBalance}원`);
+        
+        if (currentBalance === "0") {
+            console.log("⚠️ 10초를 기다렸지만 계속 0원입니다. (새벽 은행/DB 점검으로 잔액 연동이 끊겨있습니다!)");
+        }
 
     } catch (e) {
         console.log(`❌ 작업 중 에러 발생: ${e.message}`);
@@ -78,7 +84,7 @@ export default async function(api) {
         }
     }
 
-    // 결과 저장 (result.json)
+    // 결과 저장
     try {
         const resultData = { balance: currentBalance, status: status, message: message, last_run: new Date().toISOString() };
         fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
