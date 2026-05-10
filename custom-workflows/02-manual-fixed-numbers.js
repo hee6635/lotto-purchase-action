@@ -6,55 +6,63 @@ export default async function(api) {
 
     let currentBalance = "0";
 
-    try {
-        console.log("=== 🎯 [정밀 타격] 엉뚱한 숫자 방지 & 진짜 잔액 추출 ===");
+    // 🔍 수사 대상 (가장 확률 높은 3곳)
+    const targets = [
+        { name: "모바일 메인", url: "https://m.dhlottery.co.kr/common.do?method=main" },
+        { name: "예치금 내역", url: "https://m.dhlottery.co.kr/myPage.do?method=depositList" },
+        { name: "로또 구매창", url: "https://ol.dhlottery.co.kr/olotto/game/game645.do" }
+    ];
 
-        // 1. 신분 위장
-        await page.addInitScript(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        });
+    console.log("=== 🕵️‍♂️ [핀포인트 전수 조사] 진짜 예치금을 찾아라 ===");
 
-        // 2. API 주소 직접 진입
-        const apiTarget = 'https://dhlottery.co.kr/user.do?method=getUserBalance';
-        const response = await page.goto(apiTarget, { waitUntil: 'networkidle', timeout: 20000 });
-        const rawText = await response.text();
+    for (const target of targets) {
+        try {
+            console.log(`📡 [수색 중] ${target.name} 접속...`);
+            // 타임아웃을 30초로 늘려 타르핏(접속 지연) 방어
+            await page.goto(target.url, { waitUntil: 'networkidle', timeout: 30000 });
+            await page.waitForTimeout(3000); // 데이터 로딩 대기
 
-        // 3. 🔍 [정밀 분석] "cashBalance" 키워드 뒤에 오는 숫자만 타격
-        // 예: {"cashBalance":"10,000", ...} 에서 10,000만 쏙 빼옴
-        const balanceMatch = rawText.match(/"cashBalance"\s*:\s*"([0-9,]+)"/);
-        
-        if (balanceMatch && balanceMatch[1]) {
-            currentBalance = balanceMatch[1].replace(/,/g, '');
-            console.log(`💰 [월척 포착] 진짜 예치금: ${currentBalance}원`);
-        } else {
-            // 만약 JSON 형식이 아닐 경우를 대비한 2차 수색
-            const backupMatch = rawText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
-            currentBalance = backupMatch ? backupMatch[1].replace(/,/g, '') : "0";
-            
-            if (currentBalance === "0") {
-                console.log("⚠️ 정밀 타격 실패. 원본 데이터 확인:", rawText.substring(0, 150));
-            } else {
-                console.log(`💰 [백업 포착] 예치금: ${currentBalance}원`);
+            const report = await page.evaluate((name) => {
+                const fullText = document.body.innerText;
+                const idx = fullText.indexOf("예치금");
+                if (idx === -1) return `❌ ${name}: '예치금' 단어 없음 (로그인 상태 확인 필요)`;
+                
+                // 단어 주변 120자를 긁어 문맥 확인
+                const snippet = fullText.substring(Math.max(0, idx - 20), idx + 100).replace(/\n/g, ' ');
+                return `✅ ${name} 포착: ${snippet}`;
+            }, target.name);
+
+            console.log("------------------------------------------");
+            console.log(report);
+            console.log("------------------------------------------");
+
+            // 💰 숫자 추출 시도 (0이 아닌 진짜 금액을 찾으면 즉시 중단)
+            const match = report.match(/예치금\s*[:\n]?\s*([0-9,]+)/);
+            if (match && match[1].replace(/,/g, '') !== "0") {
+                currentBalance = match[1].replace(/,/g, '');
+                console.log(`✨ [검거 성공] ${target.name}에서 잔액을 찾았습니다: ${currentBalance}원`);
+                break; 
             }
+        } catch (e) {
+            console.log(`⚠️ ${target.name} 접속 실패: ${e.message}`);
         }
-
-    } catch (e) {
-        console.log(`❌ 에러: ${e.message}`);
     }
 
-    // 4. 로또 구매 프로세스 (구매 단계는 이미 검증 완료!)
+    console.log(`🏁 최종 확정 잔액: ${currentBalance}원`);
+
+    // 🚀 실전 구매 시도 (이미 로직은 정상 작동 확인됨!)
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
         if (api.purchaseManual) {
             await api.purchaseManual([targetNumbers]);
-            console.log("✅ 구매 시도 완료");
+            console.log("✅ 구매 프로세스 가동 완료");
         }
     } catch (err) {
         console.log(`구매 알림: ${err.message}`);
     }
 
-    // 결과 저장
+    // 결과 저장 (어플 화면 업데이트용)
     fs.writeFileSync('result.json', JSON.stringify({ balance: currentBalance, last_run: new Date().toISOString() }));
 
     return { status: "success", balance: currentBalance };
