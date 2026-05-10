@@ -30,6 +30,9 @@ jobs:
 
       - name: Custom purchase workflow
         uses: ./
+        # 💡 [핵심 수정] with 대신 env를 사용하여 데이터를 배달합니다.
+        env:
+          APP_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
         with:
           dhlottery-id: ${{ secrets.DHLOTTERY_ID }}
           dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
@@ -37,22 +40,17 @@ jobs:
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
-          lotto-numbers: ${{ github.event.inputs.lotto_numbers }}
 
-      # 💡 [최종 수정] 결과 저장 단계
       - name: Save and Push Result
         run: |
-          # 보안 예외 처리
           git config --global --add safe.directory /__w/lotto-purchase-action/lotto-purchase-action
-          
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           
-          # 로봇이 생성한 result.json이 있는지 확인하고 저장
           if [ -f "result.json" ]; then
             git add result.json
-            git commit -m "Update real balance from dhlottery" || echo "No changes to commit"
+            git commit -m "Update real balance" || echo "No changes to commit"
             git push
           else
-            echo "결과 파일(result.json)이 생성되지 않았습니다."
+            echo "결과 파일이 생성되지 않았습니다."
           fi
