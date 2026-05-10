@@ -1,73 +1,95 @@
-import fs from 'fs';
+const fs = require('fs');
 
-export default async ({ purchaseManual, page }) => {
-  console.log('=== 📱 모바일 사이트 우회 잔액 추출 가동 ===');
+module.exports = async (api) => {
+    // 1. 조종기(page) 확보 (index.js에서 무사히 전달됨!)
+    const page = api.page || (api.session ? api.session.page : null);
+    
+    let currentBalance = "--";
+    let status = "success";
+    let message = "작업 완료";
 
-  let currentBalance = 0;
-  let status = "fail";
-  let message = "대기중";
-
-  // 1. 기존 데이터 로드 (백업용)
-  try {
-    const rawData = fs.readFileSync('result.json', 'utf8');
-    currentBalance = JSON.parse(rawData).balance || 0;
-  } catch (e) { currentBalance = 0; }
-
-  try {
-    // 2. [핵심] 사용자님이 캡처해주신 '모바일 전용' 주소로 접속
-    console.log('📡 모바일 연금복권 구매 페이지 접속 중...');
-    await page.goto('https://el.dhlottery.co.kr/game/TotalGame.do?gameId=T720', {
-      waitUntil: 'networkidle',
-      timeout: 30000 
-    });
-    await page.waitForTimeout(2000);
-
-    // 3. [사진 위치 정밀 타격] "보유중인 예치금" 글자 옆의 숫자 찾기
-    const extracted = await page.evaluate(() => {
-      const text = document.body.innerText;
-      // 화면 전체 글자 중에서 "보유중인 예치금" 뒤에 오는 숫자+원 조합을 싹쓸이합니다.
-      const match = text.match(/보유중인 예치금.*?([\d,]+)\s*원/s) || text.match(/예치금.*?([\d,]+)\s*원/s);
-      return match ? match[1] : null;
-    });
-
-    if (extracted) {
-      currentBalance = parseInt(extracted.replace(/,/g, ''), 10);
-      status = "success";
-      message = "모바일 우회 동기화 성공";
-      console.log(`✅ 사진 위치에서 확인된 진짜 예치금: ${currentBalance}원`);
-    } else {
-      console.log('⚠️ 모바일 페이지에서 "보유중인 예치금" 글자를 찾지 못했습니다.');
+    if (!page) {
+        console.error("❌ 조종기(page)를 찾을 수 없습니다.");
+        return { status: "fail", message: "조종기 연결 실패" };
     }
 
-    // 4. 로또 구매 시도 (로또가 점검 중이면 실패하겠지만, 잔액은 10,000원으로 갱신됨)
-    const rawNumbers = process.env.APP_NUMBERS;
-    if (rawNumbers) {
-      console.log('🚀 로또 구매 시도 중...');
-      const targetNumbers = [rawNumbers.split(',').map(n => parseInt(n.trim(), 10))];
-      await purchaseManual(targetNumbers).catch(e => {
-        console.log(`로또 구매 불가 상황: ${e.message}`);
-        if (status === "success") {
-          // 돈은 확인했는데 구매만 안 된 경우
-          message = "로또 판매 시간 아님 (잔액 확인 완료)"; 
+    try {
+        console.log("=== 📱 예치금 및 로또 자동화 작업 시작 ===");
+        
+        // 2. 예치금 추출 (가장 텍스트가 명확하게 뜨는 마이페이지로 우회 접속)
+        console.log("📡 확실한 예치금 조회를 위해 마이페이지 접속 중...");
+        await page.goto("https://dhlottery.co.kr/user.do?method=myPage", { waitUntil: "networkidle", timeout: 30000 });
+        await page.waitForTimeout(2000); // 로딩 대기
+
+        // 3. 3중 안전장치가 적용된 예치금 스크래핑
+        currentBalance = await page.evaluate(() => {
+            // 1순위: PC/모바일 마이페이지의 정해진 예치금 태그 찾기
+            const moneyTag = document.querySelector('.money strong') || document.querySelector('.my_money');
+            if (moneyTag) return moneyTag.innerText.replace(/[^0-9]/g, '');
+
+            // 2순위: 전체 텍스트에서 '예치금' 주변의 숫자 찾기
+            const bodyText = document.body.innerText;
+            const match1 = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
+            if (match1) return match1[1].replace(/[^0-9]/g, '');
+
+            // 3순위: 어떻게든 화면에 있는 '원' 앞의 숫자 긁어오기 (최후의 수단)
+            const match2 = bodyText.match(/([0-9,]+)\s*원/);
+            if (match2) return match2[1].replace(/[^0-9]/g, '');
+
+            return "--";
+        });
+
+        console.log(`✅ 현재 예치금 확인 완료: ${currentBalance}원`);
+
+    } catch (e) {
+        console.log(`❌ 예치금 확인 실패: ${e.message}`);
+        status = "fail";
+        message = `예치금 확인 에러: ${e.message}`;
+    }
+
+    // 4. 로또 수동 구매 시도
+    try {
+        const hour = new Date().getHours();
+        
+        // 동행복권 구매 불가 시간 (00:00 ~ 06:00) 방어 로직
+        if (hour >= 0 && hour < 6) {
+            console.log("⚠️ 현재는 로또 구매 불가 시간(00:00~06:00)입니다. 예치금 정보만 업데이트합니다.");
+            message = "구매 불가 시간 (잔액 동기화 완료)";
+        } else {
+            console.log("🚀 로또 구매 시도 중...");
+            
+            // 어플에서 보낸 번호(INPUT_LOTTO_NUMBERS)가 있으면 쓰고, 없으면 기본값 사용
+            const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
+            const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
+            
+            if (api.purchaseManual) {
+                 await api.purchaseManual([targetNumbers]); // 1게임 구매
+                 console.log(`✅ 로또 구매 성공! 번호: [${targetNumbers.join(', ')}]`);
+                 message = "로또 구매 성공!";
+            } else {
+                 throw new Error("엔진에서 수동 구매 기능을 찾을 수 없습니다.");
+            }
         }
-      });
+    } catch (e) {
+        console.log(`❌ 구매 실패 로그: ${e.message}`);
+        status = "fail";
+        message = `로또 구매 실패: ${e.message}`;
     }
 
-  } catch (error) {
-    console.log('❌ 모바일 우회 중 오류 발생:', error.message);
-    if (status !== "success") message = "모바일 경로 접속 오류";
-  }
+    // 5. 어플(React) 동기화를 위해 result.json 파일 생성
+    try {
+        const resultData = {
+            balance: currentBalance,
+            status: status,
+            message: message,
+            last_run: new Date().toISOString()
+        };
+        fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
+        console.log("✅ result.json 파일 업데이트 완료 (어플 동기화 준비 끝)");
+    } catch (e) {
+        console.log(`❌ result.json 저장 실패: ${e.message}`);
+    }
 
-  // 5. 최종 결과 기록 (가짜 데이터 없음!)
-  saveResult(currentBalance, status, message);
+    console.log("=== 🏁 모든 작업 종료 ===");
+    return { status, message, balance: currentBalance };
 };
-
-function saveResult(balance, status, msg) {
-  const resultData = {
-    balance: balance,
-    status: status,
-    message: msg,
-    last_run: new Date().toISOString()
-  };
-  fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
-}
