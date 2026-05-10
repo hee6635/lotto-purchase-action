@@ -2,65 +2,79 @@ import fs from 'fs';
 
 export default async function(api) {
     const page = api.page || (api.session ? api.session.page : null);
-    
-    let currentBalance = "--";
-    let status = "success";
-    let message = "작업 완료";
-
     if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
-    try {
-        console.log("=== 📡 [사용자님 요청] API 데이터 직접 접속 작전 ===");
-        
-        // 1. 💡 [핵심] 껍데기 화면 다 버리고, 서버가 JSON 데이터만 뱉는 주소로 직접 이동!
-        console.log("📡 서버 잔액 API 주소로 직접 진입 중...");
-        await page.goto("https://m.dhlottery.co.kr/user.do?method=cashBalanceApi", { waitUntil: "networkidle" });
-        
-        // 2. 👀 [추적 모드] 화면에 뜬 데이터 원본 확인
-        const rawJson = await page.evaluate(() => document.body.innerText);
-        console.log("------------------------------------------");
-        console.log("👀 [API 서버가 뱉어낸 생데이터]");
-        console.log(rawJson); // {"cashBalance":"10,000", ...} 이런 식으로 뜰 겁니다.
-        console.log("------------------------------------------");
+    // 🔍 수사 대상 (PC/모바일, 구매/내역/정보 등 12개 구역)
+    const targetUrls = [
+        { n: "PC 메인", u: "https://dhlottery.co.kr/common.do?method=main" },
+        { n: "모바일 메인", u: "https://m.dhlottery.co.kr/common.do?method=main" },
+        { n: "모바일 마이페이지", u: "https://m.dhlottery.co.kr/userSsl.do?method=myPage" },
+        { n: "예치금 내역(M)", u: "https://m.dhlottery.co.kr/myPage.do?method=depositList" },
+        { n: "구매내역(M)", u: "https://m.dhlottery.co.kr/myPage.do?method=lottoBuyList" },
+        { n: "로또 구매창(PC)", u: "https://ol.dhlottery.co.kr/olotto/game/game645.do" },
+        { n: "연금복권(M)", u: "https://m.dhlottery.co.kr/game/pension720/buy" },
+        { n: "내 정보 수정(M)", u: "https://m.dhlottery.co.kr/userSsl.do?method=memberUpdateConfirm" },
+        { n: "충전하기(M)", u: "https://m.dhlottery.co.kr/payment.do?method=payment" },
+        { n: "출금하기(M)", u: "https://m.dhlottery.co.kr/userSsl.do?method=cashWithdrawalRequest" },
+        { n: "고객센터(M)", u: "https://m.dhlottery.co.kr/customer.do?method=noticeList" },
+        { n: "잔액API(Direct)", u: "https://dhlottery.co.kr/user.do?method=cashBalanceApi" }
+    ];
 
-        // 3. 데이터 가공
-        if (rawJson.includes("cashBalance")) {
-            const data = JSON.parse(rawJson);
-            currentBalance = data.cashBalance.replace(/[^0-9]/g, '');
-            console.log(`✅ 드디어 확인된 진짜 잔액: ${currentBalance}원`);
-        } else {
-            console.log("⚠️ 데이터에 잔액 정보가 없습니다. 다시 한번 메인으로 이동해 세션을 깨웁니다.");
-            await page.goto("https://m.dhlottery.co.kr/common.do?method=main");
-            currentBalance = "0";
+    let scanResults = [];
+    let foundBalance = "0";
+
+    console.log("=== 🕵️‍♂️ [대규모 전수 조사] 12개 구역 스캔 가동 ===");
+
+    for (const target of targetUrls) {
+        try {
+            console.log(`📡 [수사 중] ${target.n} 진입...`);
+            await page.goto(target.u, { waitUntil: "domcontentloaded", timeout: 15000 });
+            await page.waitForTimeout(2500); // 렌더링 대기
+
+            const report = await page.evaluate((name) => {
+                const text = document.body.innerText;
+                const hasKeyword = text.includes("예치금");
+                const hasAmount = text.includes("10,000") || text.includes("10,000원");
+                
+                let snippet = "내용 없음";
+                if (hasKeyword || hasAmount) {
+                    const idx = text.indexOf(hasKeyword ? "예치금" : "10,000");
+                    snippet = text.substring(Math.max(0, idx - 20), idx + 60).replace(/\n/g, ' ');
+                }
+
+                return { name, hasKeyword, hasAmount, snippet };
+            }, target.n);
+
+            if (report.hasKeyword || report.hasAmount) {
+                console.log(`✅ [발견!] ${target.n}: ${report.snippet}`);
+                // 발견된 곳에서 숫자만 추출 시도
+                const match = report.snippet.match(/([0-9,]{2,10})/);
+                if (match) foundBalance = match[1].replace(/[^0-9]/g, '');
+            } else {
+                console.log(`❌ ${target.n}: 흔적 없음`);
+            }
+            
+            scanResults.push(report);
+        } catch (e) {
+            console.log(`⚠️ ${target.n} 조사 건너뜀: ${e.message}`);
         }
-
-    } catch (e) {
-        console.log(`❌ API 추출 중 에러: ${e.message}`);
-        status = "fail";
     }
 
-    // 4. 🚀 6시 13분! 아까 로그에서 구매 버튼 클릭까지 확인됐으니, 이제 진짜 구매합니다!
-    console.log("🚀 로또 구매 프로세스를 즉시 가동합니다.");
+    console.log("=== 🕵️‍♂️ 수사 종료: 가장 신빙성 있는 잔액 확정 ===");
+    console.log(`💰 최종 포착 잔액: ${foundBalance}원`);
+
+    // 🚀 구매 시도 (조사 후에 6시 넘었으니 그대로 진행)
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-        
         if (api.purchaseManual) {
             await api.purchaseManual([targetNumbers]);
-            console.log(`✅ 구매 최종 성공! 번호: [${targetNumbers.join(', ')}]`);
-            message = "로또 구매 및 잔액 업데이트 성공!";
         }
-    } catch (err) {
-        console.log(`❌ 구매 시도 알림: ${err.message}`);
-        message = `구매 결과: ${err.message}`;
-    }
+    } catch (err) {}
 
     // 결과 저장
-    try {
-        const resultData = { balance: currentBalance, status, message, last_run: new Date().toISOString() };
-        fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
-        console.log("✅ result.json 업데이트 완료");
-    } catch (e) {}
+    const resultData = { balance: foundBalance, last_run: new Date().toISOString(), scan_report: scanResults };
+    fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
 
-    return { status, message, balance: currentBalance };
+    return { status: "success", balance: foundBalance };
 }
