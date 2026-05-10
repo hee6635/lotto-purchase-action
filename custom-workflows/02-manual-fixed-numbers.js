@@ -7,77 +7,67 @@ export default async function(api) {
     let status = "success";
     let message = "작업 완료";
 
-    if (!page) {
-        return { status: "fail", message: "조종기 연결 실패" };
-    }
+    if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
     try {
-        console.log("=== 📡 [통합 감시 모드] API 데이터 + 화면 상태 추적 ===");
+        console.log("=== 🌅 [6시 정각] 점검 종료 및 실전 데이터 추출 ===");
         
-        // 1. 메인 접속
-        console.log("📡 동행복권 메인 접속 중...");
+        // 1. PC 메인 접속 (6시 이후엔 점검 팝업이 사라집니다)
+        console.log("📡 동행복권 PC 메인 페이지 접속 중...");
         await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle" });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000); // 6시 직후 서버 부하 대비 5초 대기
 
-        // 2. 🔍 [추적 1] 현재 화면 텍스트 감시
-        const allText = await page.evaluate(() => document.body.innerText);
-        console.log("------------------------------------------");
-        console.log("👀 [감시 1: 현재 페이지 텍스트 상태]");
-        console.log(allText.substring(0, 600)); // 앞부분 600자만 출력
-        console.log("------------------------------------------");
-
-        // 3. 🔍 [추적 2] 서버 API 직접 호출 및 데이터 탈취
-        console.log("🔍 서버 데이터 패킷(JSON) 탈취 시도...");
-        const apiResponse = await page.evaluate(async () => {
-            try {
-                const response = await fetch("https://dhlottery.co.kr/user.do?method=cashBalanceApi");
-                return await response.json();
-            } catch (e) {
-                return { error: e.message };
-            }
+        // 2. 🔍 [추적] 화면에 숨겨진 잔액 변수 및 태그 싹 다 뒤지기
+        const debugData = await page.evaluate(() => {
+            // 사이트 내부 자바스크립트 변수에 잔액이 있는지 확인
+            const win = window;
+            return {
+                innerMoney: win.curCash || win.cashBalance || "없음",
+                tagMoney: document.querySelector('.money strong')?.innerText || "태그없음",
+                myMoney: document.querySelector('.my_money')?.innerText || "영역없음"
+            };
         });
 
         console.log("------------------------------------------");
-        console.log("👀 [감시 2: 서버 API 응답 원본 데이터]");
-        console.log(JSON.stringify(apiResponse, null, 2));
+        console.log("👀 [감시: 화면 내부 데이터 상태]");
+        console.log(`변수 잔액: ${debugData.innerMoney}`);
+        console.log(`태그 잔액: ${debugData.tagMoney}`);
+        console.log(`영역 잔액: ${debugData.myMoney}`);
         console.log("------------------------------------------");
 
-        // 4. 데이터 검증
-        if (apiResponse && apiResponse.cashBalance) {
-            currentBalance = apiResponse.cashBalance.replace(/[^0-9]/g, '');
-            console.log(`✅ 최종 잔액 확정: ${currentBalance}원`);
+        // 3. 잔액 확정 로직
+        if (debugData.tagMoney !== "태그없음") {
+            currentBalance = debugData.tagMoney.replace(/[^0-9]/g, '');
+        } else if (debugData.innerMoney !== "없음") {
+            currentBalance = debugData.innerMoney.toString().replace(/[^0-9]/g, '');
         } else {
-            console.log("⚠️ API 응답에 잔액이 없습니다. 세션 확인이 필요합니다.");
-            currentBalance = "0";
+            // 최후의 수단: 텍스트 긁기
+            const bodyText = await page.evaluate(() => document.body.innerText);
+            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
+            currentBalance = match ? match[1].replace(/[^0-9]/g, '') : "0";
         }
+
+        console.log(`✅ 최종 확정 잔액: ${currentBalance}원`);
 
     } catch (e) {
-        console.log(`❌ 추출 중 에러 발생: ${e.message}`);
+        console.log(`❌ 에러 발생: ${e.message}`);
         status = "fail";
-        message = `에러: ${e.message}`;
     }
 
-    // ⏰ 6시 기준 구매 판단
-    const kstTime = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-    const hour = kstTime.getHours();
-
-    if (hour >= 6) {
-        console.log("🚀 6시가 지났습니다! 실전 구매 가동!");
-        try {
-            const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
-            const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-            if (api.purchaseManual) {
-                await api.purchaseManual([targetNumbers]);
-                console.log(`✅ 구매 성공: [${targetNumbers.join(', ')}]`);
-                message = "로또 구매 성공!";
-            }
-        } catch (err) {
-            console.log(`❌ 구매 에러: ${err.message}`);
-            message = `구매 에러: ${err.message}`;
+    // 4. 로또 구매 시도 (6시 지났으므로 무조건 시도!)
+    console.log("🚀 아침 6시! 구매 제한 해제. 로또 구매를 시도합니다.");
+    try {
+        const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
+        const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
+        
+        if (api.purchaseManual) {
+            await api.purchaseManual([targetNumbers]);
+            console.log(`✅ 구매 성공: [${targetNumbers.join(', ')}]`);
+            message = "로또 구매 및 잔액 동기화 성공!";
         }
-    } else {
-        console.log("⚠️ 점검 시간(00-06시)입니다. 잔액 정보만 저장합니다.");
-        message = "잔액 동기화 완료 (점검시간)";
+    } catch (err) {
+        console.log(`❌ 구매 시도 중 알림: ${err.message} (이미 구매했거나 잔액 부족일 수 있음)`);
+        message = `구매 알림: ${err.message}`;
     }
 
     // 결과 저장
