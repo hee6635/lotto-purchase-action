@@ -1,54 +1,65 @@
 import fs from 'fs';
 
 export default async ({ purchaseManual, page }) => {
-  console.log('=== ⚡ 실시간 잔액 강제 동기화 가동 ===');
+  console.log('=== 🚨 긴급 데이터 추출 및 동기화 모드 가동 ===');
 
   let currentBalance = 0;
   let status = "fail";
   let message = "";
 
   try {
-    // 1. [강제 로그인 시도] 구매 엔진을 통해 로그인을 먼저 시도합니다.
-    console.log('🔑 세션 확보 중...');
-    // 구매는 실패하더라도 이 과정에서 로그인은 완료됩니다.
-    await purchaseManual([[1, 2, 3, 4, 5, 6]]).catch(() => console.log("구매 시도는 차단됨 (무시하고 잔액 확인 진행)"));
+    // 1. [접속] 일단 메인 페이지로 갑니다.
+    console.log('📡 사이트 접속 시도...');
+    await page.goto('https://dhlottery.co.kr/common.do?method=main', { waitUntil: 'networkidle', timeout: 60000 });
+    
+    // 2. [로그인 확인] 만약 로그인이 안 되어 있다면 구매 엔진을 통해 세션을 강제로 맺습니다.
+    const isLoggedIn = await page.$('.btn_logout').catch(() => null);
+    if (!isLoggedIn) {
+      console.log('🔑 세션이 끊겨 있습니다. 재로그인 시도...');
+      // 구매는 안 되더라도 이 함수가 실행되면 로그인은 처리됩니다.
+      await purchaseManual([[1, 2, 3, 4, 5, 6]]).catch(() => {});
+      await page.goto('https://dhlottery.co.kr/common.do?method=main');
+    }
 
-    // 2. [불도저 잔액 찾기] 사이트 메인으로 이동
-    await page.goto('https://dhlottery.co.kr/common.do?method=main', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
-    // 3. [정밀 타격] 여러 가지 가능성 있는 잔액 위치를 다 뒤집니다.
-    const balance = await page.evaluate(() => {
-      // 방법 A: 표준 예치금 위치
-      const el1 = document.querySelector('.money strong');
-      // 방법 B: 유저 정보 섹션
-      const el2 = document.querySelector('.user_info .money');
-      // 방법 C: 텍스트로 '원' 앞에 있는 숫자 찾기
-      const allTexts = document.body.innerText;
-      const match = allTexts.match(/예치금\s*([\d,]+)원/) || allTexts.match(/잔액\s*([\d,]+)원/);
-      
-      if (el1) return el1.innerText;
-      if (el2) return el2.innerText;
-      if (match) return match[1];
-      return null;
+    // 3. [팝업 제거] 점검 안내 팝업 등이 앞을 가리고 있다면 강제로 닫거나 무시합니다.
+    console.log('🧹 화면 가림막 제거 중...');
+    await page.evaluate(() => {
+        const popups = document.querySelectorAll('.popup, .layer_popup, #at_popup');
+        popups.forEach(p => p.style.display = 'none');
     });
 
-    if (balance) {
-      currentBalance = parseInt(balance.replace(/,/g, ''), 10);
+    // 4. [불도저 추출] 화면 전체의 텍스트를 긁어서 숫자를 뽑아냅니다.
+    console.log('🔍 데이터 정밀 수색 중...');
+    const extractedBalance = await page.evaluate(() => {
+      // 화면 전체 텍스트를 가져와서 '예치금' 혹은 '총 잔액' 뒤의 숫자를 찾습니다.
+      const bodyText = document.body.innerText;
+      const regex = /(?:예치금|잔액|예치금 잔액)\s*[:]*\s*([\d,]+)/;
+      const match = bodyText.match(regex);
+      
+      if (match && match[1]) return match[1];
+      
+      // 혹시 모르니 클래스명으로 한 번 더 시도
+      const el = document.querySelector('.money strong') || document.querySelector('.user_info .money');
+      return el ? el.innerText : null;
+    });
+
+    if (extractedBalance) {
+      currentBalance = parseInt(extractedBalance.replace(/,/g, ''), 10);
       status = "success";
-      message = "실시간 동기화 완료";
-      console.log(`✅ 현장 잔액 확인 성공: ${currentBalance}원`);
+      message = "실시간 강제 동기화 성공";
+      console.log(`✅ 확인된 진짜 잔액: ${currentBalance}원`);
     } else {
-      message = "로그인 세션 확인 불가";
-      console.log('❌ 숫자를 찾지 못했습니다. (로그인 안 됨)');
+      status = "fail";
+      message = "화면에서 잔액을 찾지 못함";
+      console.log('❌ 숫자를 찾지 못했습니다. 화면 구성을 확인해야 합니다.');
     }
 
   } catch (error) {
-    console.log('❌ 에러 발생:', error.message);
-    message = "데이터 추출 실패";
+    console.log('❌ 치명적 오류:', error.message);
+    message = "데이터 추출 엔진 오류";
   }
 
-  // 4. 어떤 상황에서도 확보된 숫자를 기록 (가짜 15000원 완전 삭제)
+  // 어떤 상황에서도 결과 기록 (기존 15000원 기록이 있다면 덮어씌워짐)
   saveResult(currentBalance, status, message);
 };
 
