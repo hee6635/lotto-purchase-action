@@ -1,6 +1,6 @@
 {
-  "balance": "0",
+  "balance": "추출실패",
   "status": "success",
   "message": "잔액 동기화 완료 (점검시간)",
-  "last_run": "2026-05-10T20:19:30.717Z"
+  "last_run": "2026-05-10T20:24:40.903Z"
 }
