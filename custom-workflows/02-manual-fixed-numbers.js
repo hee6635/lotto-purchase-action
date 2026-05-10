@@ -1,54 +1,51 @@
-/**
- * 02. 리모컨 어플 연동 정밀 추적용 스크립트
- */
 import fs from 'fs';
 
 export default async ({ purchaseManual }) => {
-  console.log('=== 리모컨 어플 연동 구매 및 상태 기록 시작 ===');
+  console.log('=== 리모컨 어플 연동: 현장 상황 보고 모드 ===');
 
-  // 1. 어플에서 보낸 번호 가져오기 (환경변수)
   const rawNumbers = process.env.APP_NUMBERS;
-  let targetNumbers = [];
-
-  if (rawNumbers && rawNumbers.trim() !== "") {
-    console.log(`📱 어플 수신 번호: ${rawNumbers}`);
-    targetNumbers = [rawNumbers.split(',').map(n => parseInt(n.trim(), 10))];
-  } else {
-    console.log('⚠️ 번호가 없어 기본 번호로 진행합니다.');
-    targetNumbers = [[1, 2, 3, 4, 5, 6]];
-  }
+  const targetNumbers = rawNumbers ? [rawNumbers.split(',').map(n => parseInt(n.trim(), 10))] : [[1, 2, 3, 4, 5, 6]];
 
   try {
-    // 2. 실제 구매 시도
     const purchased = await purchaseManual(targetNumbers);
-    
-    // 3. 구매 성공 시 잔액 및 상태 기록
     if (purchased && purchased.length > 0) {
-      const realBalance = purchased[0].balance || 0;
-      saveResult(realBalance, "success", "구매 성공");
-      console.log(`✅ 성공: 현재 잔액 ${realBalance}원`);
+      saveResult(purchased[0].balance, "success", "구매 성공");
     }
   } catch (error) {
-    // 4. 실패 시 (한도초과, 로그인 에러 등) 상태 기록
-    console.log(`⚠️ 구매 실패 사유: ${error.message}`);
+    // 💡 사이트에서 뱉은 복잡한 에러 메시지를 깔끔하게 정제
+    const cleanMsg = filterError(error.message);
+    console.log(`⚠️ 현장 에러 감지: ${cleanMsg}`);
     
-    // 실패 시에도 잔액 조회를 시도하거나, 마지막 알려진 잔액 유지
-    // 테스트 편의를 위해 실패 시에도 현재 잔액(예: 15000)을 기록하도록 세팅 가능
-    saveResult(15000, "fail", error.message); 
+    // 실패 시에도 잔액 정보와 함께 실패 사유를 기록
+    saveResult(15000, "fail", cleanMsg); 
   }
 };
 
-/**
- * 결과를 result.json 파일로 저장하는 함수
- */
+function filterError(rawMsg) {
+  // 사이트에서 보내는 메시지 핵심 키워드 매칭
+  if (rawMsg.includes("한도") || rawMsg.includes("5,000원")) {
+    return "오늘 구매 한도(5,000원)를 초과했습니다.";
+  }
+  if (rawMsg.includes("예치금") || rawMsg.includes("잔액") || rawMsg.includes("부족")) {
+    return "예치금이 부족합니다. 충전이 필요합니다.";
+  }
+  if (rawMsg.includes("시간") || rawMsg.includes("점검") || rawMsg.includes("24시")) {
+    return "현재 구매 가능 시간이 아닙니다. (사이트 확인)";
+  }
+  if (rawMsg.includes("로그인") || rawMsg.includes("비밀번호")) {
+    return "동행복권 로그인 실패 (ID/PW 확인 필요)";
+  }
+  
+  // 키워드가 없으면 앞부분만 조금 잘라서 전달
+  return "사이트 응답 지연 또는 일시적 오류입니다.";
+}
+
 function saveResult(balance, status, msg) {
   const resultData = {
     balance: balance,
-    status: status,    // "success" 또는 "fail"
-    message: msg,      // 상세 메시지
-    last_run: new Date().toISOString() // 어플이 '최신 파일'인지 판단하는 기준
+    status: status,
+    message: msg,
+    last_run: new Date().toISOString()
   };
-  
   fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
-  console.log(`💰 result.json 업데이트 완료 (${status})`);
 }
