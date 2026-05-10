@@ -1,6 +1,6 @@
 {
   "balance": 0,
   "status": "fail",
-  "message": "데이터 추출 실패",
-  "last_run": "2026-05-10T15:23:42.887Z"
+  "message": "데이터 추출 엔진 오류",
+  "last_run": "2026-05-10T15:26:01.757Z"
 }
