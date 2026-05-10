@@ -13,32 +13,35 @@ export default async function(api) {
     }
 
     try {
-        console.log("=== 📱 [3차 정밀 수사] 모바일 마이페이지 타격 ===");
+        console.log("=== 🎯 [사용자님 아이디어] 연금복권 구매창 우회 타격 ===");
         
-        // 💡 [핵심] 404 에러 안 나는 모바일 전용 마이페이지 주소입니다.
-        console.log("📡 모바일 마이페이지(SSL) 접속 중...");
-        await page.goto("https://m.dhlottery.co.kr/userSsl.do?method=myPage", { waitUntil: "networkidle", timeout: 30000 });
-        
-        // 숫자가 서버에서 넘어올 때까지 넉넉하게 6초 기다립니다. (새벽 서버 응답 대비)
-        await page.waitForTimeout(6000); 
+        // 💡 로또 구매창의 심야 차단을 피해, 24시간 열려있는 연금복권 구매창으로 진입!
+        console.log("📡 연금복권 실구매창 주소로 접속 중...");
+        await page.goto("https://el.dhlottery.co.kr/game/TotalGame.do?gameId=T720", { waitUntil: "networkidle", timeout: 30000 });
+        await page.waitForTimeout(4000); // 넉넉하게 4초 대기
 
-        // 🔍 [추적 모드] 이번엔 2000자까지 넓게 봅니다.
+        // 🔍 [추적 모드] 연금복권 구매창 텍스트 확인
         const allText = await page.evaluate(() => document.body.innerText);
         console.log("------------------------------------------");
-        console.log("👀 [마이페이지 화면 텍스트 추출]");
-        console.log(allText.substring(0, 1500)); 
+        console.log("👀 [연금복권 구매창 텍스트 추출]");
+        console.log(allText.substring(0, 1000));
         console.log("------------------------------------------");
 
-        // 🔍 예치금 추출 (정규식 강화: 숫자가 0이어도 가져오되, 앞뒤 문맥 확인)
+        // 🔍 예치금 추출
         currentBalance = await page.evaluate(() => {
-            const bodyText = document.body.innerText;
-            // '예치금' 뒤에 나오는 숫자와 콤마를 찾습니다.
-            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
-            
-            if (match && match[1]) {
-                const val = match[1].replace(/[^0-9]/g, '');
-                return val === "" ? "0" : val;
+            // 1. 연금복권 구매창 내의 잔액 태그 강제 확인
+            const moneyEl = document.querySelector('#Money') || document.querySelector('#payAmt') || document.querySelector('.money');
+            if (moneyEl && moneyEl.innerText && moneyEl.innerText.includes(',')) {
+                return moneyEl.innerText.replace(/[^0-9]/g, '');
             }
+            
+            // 2. 백업: '예치금' 주변 혹은 '원' 앞의 숫자 긁어오기
+            const bodyText = document.body.innerText;
+            const match = bodyText.match(/([0-9,]{2,10})\s*원/); 
+            if (match && match[1]) {
+                return match[1].replace(/[^0-9]/g, '');
+            }
+            
             return "추출실패";
         });
 
@@ -55,10 +58,24 @@ export default async function(api) {
     const hour = kstTimeFinal.getHours();
 
     if (hour >= 0 && hour < 6) {
-        console.log("⚠️ 점검 시간대(00-06시)이므로 잔액만 동기화합니다.");
+        console.log("⚠️ 점검 시간대(00-06시)이므로 로또 구매 시도는 생략합니다.");
         message = "잔액 동기화 완료 (점검시간)";
     } else {
-        console.log("🚀 구매 가능 시간입니다. 로또 구매 시도!");
+        console.log("🚀 구매 가능 시간입니다. 로또 구매 시도 중...");
+        try {
+            const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
+            const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
+            
+            if (api.purchaseManual) {
+                 await api.purchaseManual([targetNumbers]); 
+                 console.log(`✅ 로또 구매 성공! 번호: [${targetNumbers.join(', ')}]`);
+                 message = "로또 구매 성공!";
+            }
+        } catch (error) {
+            console.log(`❌ 구매 에러: ${error.message}`);
+            message = `구매 에러: ${error.message}`;
+            status = "fail";
+        }
     }
 
     // 결과 저장 (result.json)
