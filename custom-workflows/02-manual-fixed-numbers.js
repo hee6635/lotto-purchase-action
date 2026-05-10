@@ -12,74 +12,77 @@ export default async function(api) {
     }
 
     try {
-        console.log("=== 💡 [발상의 전환] 예치금 거래내역 페이지 직행 ===");
+        console.log("=== 📡 [통합 감시 모드] API 데이터 + 화면 상태 추적 ===");
         
-        // 1. 버튼 클릭 필요 없는 '예치금 내역' 모바일 페이지로 다이렉트 접속
-        console.log("📡 예치금 거래내역 페이지로 접속 중...");
-        await page.goto("https://m.dhlottery.co.kr/myPage.do?method=depositList", { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(4000); // 넉넉하게 4초 대기
+        // 1. 메인 접속
+        console.log("📡 동행복권 메인 접속 중...");
+        await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle" });
+        await page.waitForTimeout(3000);
 
-        // 2. 👀 [시야 추적] 로봇이 상담센터가 아닌 제대로 된 내역 창을 보는지 확인
+        // 2. 🔍 [추적 1] 현재 화면 텍스트 감시
         const allText = await page.evaluate(() => document.body.innerText);
         console.log("------------------------------------------");
-        console.log("👀 [예치금 내역 화면 텍스트 (최대 1000자)]");
-        console.log(allText.substring(0, 1000));
+        console.log("👀 [감시 1: 현재 페이지 텍스트 상태]");
+        console.log(allText.substring(0, 600)); // 앞부분 600자만 출력
         console.log("------------------------------------------");
 
-        // 3. 잔액 추출 (내역 페이지는 잔액이 명확하게 찍힘)
-        currentBalance = await page.evaluate(() => {
-            const bodyText = document.body.innerText;
-            
-            // 튕겨서 로그아웃 되었는지 확인
-            if (bodyText.includes("로그인해주세요") || bodyText.includes("로그아웃") === false) {
-                return "로그아웃됨";
+        // 3. 🔍 [추적 2] 서버 API 직접 호출 및 데이터 탈취
+        console.log("🔍 서버 데이터 패킷(JSON) 탈취 시도...");
+        const apiResponse = await page.evaluate(async () => {
+            try {
+                const response = await fetch("https://dhlottery.co.kr/user.do?method=cashBalanceApi");
+                return await response.json();
+            } catch (e) {
+                return { error: e.message };
             }
-
-            // '총 예치금', '보유 예치금', 혹은 그냥 '예치금 10,000원' 등을 포괄적으로 찾음
-            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
-            if (match && match[1]) {
-                const val = match[1].replace(/[^0-9]/g, '');
-                return val !== "" ? val : "0";
-            }
-            return "0"; // 못 찾으면 0 반환
         });
 
-        console.log(`✅ 내역 페이지에서 확인된 예치금: ${currentBalance}원`);
+        console.log("------------------------------------------");
+        console.log("👀 [감시 2: 서버 API 응답 원본 데이터]");
+        console.log(JSON.stringify(apiResponse, null, 2));
+        console.log("------------------------------------------");
+
+        // 4. 데이터 검증
+        if (apiResponse && apiResponse.cashBalance) {
+            currentBalance = apiResponse.cashBalance.replace(/[^0-9]/g, '');
+            console.log(`✅ 최종 잔액 확정: ${currentBalance}원`);
+        } else {
+            console.log("⚠️ API 응답에 잔액이 없습니다. 세션 확인이 필요합니다.");
+            currentBalance = "0";
+        }
 
     } catch (e) {
-        console.log(`❌ 작업 중 에러 발생: ${e.message}`);
+        console.log(`❌ 추출 중 에러 발생: ${e.message}`);
         status = "fail";
         message = `에러: ${e.message}`;
     }
 
-    // ⏰ 6시가 다가옵니다!
-    const kstTimeFinal = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-    const hour = kstTimeFinal.getHours();
+    // ⏰ 6시 기준 구매 판단
+    const kstTime = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+    const hour = kstTime.getHours();
 
-    if (hour >= 0 && hour < 6) {
-        console.log("⚠️ 아직 06시 이전입니다. 잔액 동기화만 진행합니다.");
-        message = "잔액 동기화 완료 (점검시간)";
-    } else {
-        console.log("🚀 드디어 6시 오픈! 로또 구매 시도 중...");
+    if (hour >= 6) {
+        console.log("🚀 6시가 지났습니다! 실전 구매 가동!");
         try {
             const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
             const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-            
             if (api.purchaseManual) {
-                 await api.purchaseManual([targetNumbers]); 
-                 console.log(`✅ 로또 구매 성공! 번호: [${targetNumbers.join(', ')}]`);
-                 message = "로또 구매 성공!";
+                await api.purchaseManual([targetNumbers]);
+                console.log(`✅ 구매 성공: [${targetNumbers.join(', ')}]`);
+                message = "로또 구매 성공!";
             }
-        } catch (error) {
-            console.log(`❌ 구매 에러: ${error.message}`);
-            message = `구매 에러: ${error.message}`;
-            status = "fail";
+        } catch (err) {
+            console.log(`❌ 구매 에러: ${err.message}`);
+            message = `구매 에러: ${err.message}`;
         }
+    } else {
+        console.log("⚠️ 점검 시간(00-06시)입니다. 잔액 정보만 저장합니다.");
+        message = "잔액 동기화 완료 (점검시간)";
     }
 
     // 결과 저장
     try {
-        const resultData = { balance: currentBalance, status: status, message: message, last_run: new Date().toISOString() };
+        const resultData = { balance: currentBalance, status, message, last_run: new Date().toISOString() };
         fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
         console.log("✅ result.json 업데이트 완료");
     } catch (e) {}
