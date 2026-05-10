@@ -13,24 +13,31 @@ export default async function(api) {
     }
 
     try {
-        console.log("=== 📱 [정상 가동] 예치금 정밀 추적 ===");
+        console.log("=== 📱 [2차 수사 시작] 모바일 메인 화면 정밀 추적 ===");
         
         console.log("📡 진짜 모바일 메인 페이지로 접속 중...");
         await page.goto("https://m.dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle", timeout: 30000 });
         
-        await page.waitForTimeout(4000); 
+        // 💡 화면 로딩을 위해 넉넉하게 5초 대기
+        await page.waitForTimeout(5000); 
 
-        currentBalance = await page.evaluate(() => {
-            const bodyText = document.body.innerText;
-            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]{1,10})\s*원/);
-            
-            if (match && match[1]) {
-                return match[1].replace(/[^0-9]/g, ''); 
-            }
-            return "--";
-        });
+        // 🔍 [핵심] 로봇 시야 확인 (화면 전체 텍스트 로그 출력)
+        const allText = await page.evaluate(() => document.body.innerText);
+        console.log("------------------------------------------");
+        console.log("👀 [모바일 메인 화면 텍스트 (앞부분 1000자)]");
+        console.log(allText.substring(0, 1000));
+        console.log("------------------------------------------");
 
-        console.log(`✅ 최종 추출된 예치금 숫자: ${currentBalance}원`);
+        // 임시 추출 시도
+        const match = allText.match(/예치금\s*[:\n]?\s*([0-9,]{1,10})\s*원/);
+        if (match && match[1]) {
+            currentBalance = match[1].replace(/[^0-9]/g, ''); 
+        } else {
+            // 이번엔 못 찾으면 '못찾음'이라고 명확히 표시
+            currentBalance = "못찾음"; 
+        }
+
+        console.log(`✅ 추출 시도 결과: ${currentBalance} (못찾음이 뜨면 정규식 수정 필요)`);
 
     } catch (e) {
         console.log(`❌ 작업 중 에러 발생: ${e.message}`);
@@ -38,6 +45,7 @@ export default async function(api) {
         message = `에러: ${e.message}`;
     }
 
+    // 구매 불가 시간 방어 로직 (00~06시)
     const kstTimeFinal = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     const hour = kstTimeFinal.getHours();
 
@@ -62,6 +70,7 @@ export default async function(api) {
         }
     }
 
+    // 결과 저장 (result.json)
     try {
         const resultData = { balance: currentBalance, status: status, message: message, last_run: new Date().toISOString() };
         fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
