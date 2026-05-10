@@ -4,77 +4,74 @@ export default async function(api) {
     const page = api.page || (api.session ? api.session.page : null);
     if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
-    // 🔍 수사 대상 (PC/모바일, 구매/내역/정보 등 12개 구역)
-    const targetUrls = [
-        { n: "PC 메인", u: "https://dhlottery.co.kr/common.do?method=main" },
-        { n: "모바일 메인", u: "https://m.dhlottery.co.kr/common.do?method=main" },
-        { n: "모바일 마이페이지", u: "https://m.dhlottery.co.kr/userSsl.do?method=myPage" },
-        { n: "예치금 내역(M)", u: "https://m.dhlottery.co.kr/myPage.do?method=depositList" },
-        { n: "구매내역(M)", u: "https://m.dhlottery.co.kr/myPage.do?method=lottoBuyList" },
-        { n: "로또 구매창(PC)", u: "https://ol.dhlottery.co.kr/olotto/game/game645.do" },
-        { n: "연금복권(M)", u: "https://m.dhlottery.co.kr/game/pension720/buy" },
-        { n: "내 정보 수정(M)", u: "https://m.dhlottery.co.kr/userSsl.do?method=memberUpdateConfirm" },
-        { n: "충전하기(M)", u: "https://m.dhlottery.co.kr/payment.do?method=payment" },
-        { n: "출금하기(M)", u: "https://m.dhlottery.co.kr/userSsl.do?method=cashWithdrawalRequest" },
-        { n: "고객센터(M)", u: "https://m.dhlottery.co.kr/customer.do?method=noticeList" },
-        { n: "잔액API(Direct)", u: "https://dhlottery.co.kr/user.do?method=cashBalanceApi" }
-    ];
+    let currentBalance = "0";
 
-    let scanResults = [];
-    let foundBalance = "0";
+    try {
+        console.log("=== 👻 [스텔스 작전] Headless 탐지 우회 및 전수 조사 ===");
 
-    console.log("=== 🕵️‍♂️ [대규모 전수 조사] 12개 구역 스캔 가동 ===");
+        // 1. 💡 [핵심] 로봇임을 증명하는 'webdriver' 속성 지우기 (탐지 우회)
+        await page.addInitScript(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        });
 
-    for (const target of targetUrls) {
-        try {
-            console.log(`📡 [수사 중] ${target.n} 진입...`);
-            await page.goto(target.u, { waitUntil: "domcontentloaded", timeout: 15000 });
-            await page.waitForTimeout(2500); // 렌더링 대기
+        // 2. PC 로그인 세션과 일치시키기 위해 화면 크기 고정 (1920x1080)
+        await page.setViewportSize({ width: 1920, height: 1080 });
 
-            const report = await page.evaluate((name) => {
-                const text = document.body.innerText;
-                const hasKeyword = text.includes("예치금");
-                const hasAmount = text.includes("10,000") || text.includes("10,000원");
-                
-                let snippet = "내용 없음";
-                if (hasKeyword || hasAmount) {
-                    const idx = text.indexOf(hasKeyword ? "예치금" : "10,000");
-                    snippet = text.substring(Math.max(0, idx - 20), idx + 60).replace(/\n/g, ' ');
+        // 3. 📡 PC 메인 페이지로 정석 접속 (가장 차단이 덜한 경로)
+        console.log("📡 신분 위장 완료. PC 메인 페이지 접속 중...");
+        await page.goto("https://dhlottery.co.kr/common.do?method=main", { 
+            waitUntil: "networkidle", 
+            timeout: 60000 // 타르핏 방어를 위해 60초로 대폭 연장
+        });
+
+        // 4. 사람처럼 보이기 위해 무작위 마우스 움직임/스크롤 흉내
+        await page.mouse.move(Math.random() * 500, Math.random() * 500);
+        await page.waitForTimeout(4000); // 4초간 멍 때리기 (로봇은 멍 때리지 않음)
+
+        // 5. 🔍 [정밀 추적] 화면에 '로그아웃' 버튼이 있는지로 로그인 성공 여부 먼저 확인
+        const loginStatus = await page.evaluate(() => {
+            const isLoggedOutVisible = document.body.innerText.includes("로그아웃");
+            const userNames = document.body.innerText.match(/([가-힣]{2,4})님/);
+            return { isLoggedOutVisible, userName: userNames ? userNames[0] : "미확인" };
+        });
+
+        console.log(`📍 로그인 상태 체크: ${loginStatus.isLoggedOutVisible ? '✅ 로그인 유지 중' : '❌ 세션 끊김'}`);
+        console.log(`👤 사용자 인식: ${loginStatus.userName}`);
+
+        // 6. 💰 잔액 추출 (0원 껍데기가 숫자로 채워질 때까지 대기)
+        if (loginStatus.isLoggedOutVisible) {
+            console.log("⏳ 잔액 데이터 수신 대기 (최대 10초)...");
+            currentBalance = await page.evaluate(async () => {
+                const delay = ms => new Promise(res => setTimeout(res, ms));
+                for (let i = 0; i < 10; i++) {
+                    const moneyTag = document.querySelector('.money strong') || document.querySelector('.my_money');
+                    const val = moneyTag ? moneyTag.innerText.replace(/[^0-9]/g, '') : "0";
+                    if (val !== "0" && val !== "") return val;
+                    await delay(1000);
                 }
-
-                return { name, hasKeyword, hasAmount, snippet };
-            }, target.n);
-
-            if (report.hasKeyword || report.hasAmount) {
-                console.log(`✅ [발견!] ${target.n}: ${report.snippet}`);
-                // 발견된 곳에서 숫자만 추출 시도
-                const match = report.snippet.match(/([0-9,]{2,10})/);
-                if (match) foundBalance = match[1].replace(/[^0-9]/g, '');
-            } else {
-                console.log(`❌ ${target.n}: 흔적 없음`);
-            }
-            
-            scanResults.push(report);
-        } catch (e) {
-            console.log(`⚠️ ${target.n} 조사 건너뜀: ${e.message}`);
+                return "0";
+            });
         }
+
+        console.log(`✅ 최종 포착 잔액: ${currentBalance}원`);
+
+    } catch (e) {
+        console.log(`❌ 스텔스 작전 중 에러: ${e.message}`);
     }
 
-    console.log("=== 🕵️‍♂️ 수사 종료: 가장 신빙성 있는 잔액 확정 ===");
-    console.log(`💰 최종 포착 잔액: ${foundBalance}원`);
-
-    // 🚀 구매 시도 (조사 후에 6시 넘었으니 그대로 진행)
+    // 🚀 [실전 구매] 6시가 넘었으니 구매는 시도합니다.
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
-        if (api.purchaseManual) {
+        if (api.purchaseManual && currentBalance !== "0") {
             await api.purchaseManual([targetNumbers]);
+            console.log("✅ 구매 시도 완료");
         }
     } catch (err) {}
 
     // 결과 저장
-    const resultData = { balance: foundBalance, last_run: new Date().toISOString(), scan_report: scanResults };
+    const resultData = { balance: currentBalance, last_run: new Date().toISOString() };
     fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
 
-    return { status: "success", balance: foundBalance };
+    return { status: "success", balance: currentBalance };
 }
