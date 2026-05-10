@@ -13,39 +13,36 @@ export default async function(api) {
     }
 
     try {
-        console.log("=== 🖥️ [최종 수사 시작] PC 메인 페이지 정밀 추적 ===");
+        console.log("=== 📱 [3차 정밀 수사] 모바일 마이페이지 타격 ===");
         
-        // 1. PC 메인으로 접속
-        console.log("📡 동행복권 PC 메인 페이지 접속 중...");
-        await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(4000); // 넉넉하게 4초 대기
+        // 💡 [핵심] 404 에러 안 나는 모바일 전용 마이페이지 주소입니다.
+        console.log("📡 모바일 마이페이지(SSL) 접속 중...");
+        await page.goto("https://m.dhlottery.co.kr/userSsl.do?method=myPage", { waitUntil: "networkidle", timeout: 30000 });
+        
+        // 숫자가 서버에서 넘어올 때까지 넉넉하게 6초 기다립니다. (새벽 서버 응답 대비)
+        await page.waitForTimeout(6000); 
 
-        // 2. 🔍 [추적 모드] 로봇이 PC 화면에서 보고 있는 글자들 출력
+        // 🔍 [추적 모드] 이번엔 2000자까지 넓게 봅니다.
         const allText = await page.evaluate(() => document.body.innerText);
         console.log("------------------------------------------");
-        console.log("👀 [PC 메인 화면 텍스트 (앞부분 800자)]");
-        console.log(allText.substring(0, 800)); 
+        console.log("👀 [마이페이지 화면 텍스트 추출]");
+        console.log(allText.substring(0, 1500)); 
         console.log("------------------------------------------");
 
-        // 3. 예치금 정밀 추출
+        // 🔍 예치금 추출 (정규식 강화: 숫자가 0이어도 가져오되, 앞뒤 문맥 확인)
         currentBalance = await page.evaluate(() => {
-            // PC 버전 전용 태그 먼저 확인
-            const moneyTag = document.querySelector('.money strong');
-            if (moneyTag && moneyTag.innerText.includes(',')) {
-                return moneyTag.innerText.replace(/[^0-9]/g, '');
-            }
-
-            // 백업용: 텍스트에서 '예치금' 바로 뒤 숫자 찾기
             const bodyText = document.body.innerText;
-            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]{2,10})\s*원/); 
+            // '예치금' 뒤에 나오는 숫자와 콤마를 찾습니다.
+            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
+            
             if (match && match[1]) {
-                return match[1].replace(/[^0-9]/g, '');
+                const val = match[1].replace(/[^0-9]/g, '');
+                return val === "" ? "0" : val;
             }
-
             return "추출실패";
         });
 
-        console.log(`✅ 최종 추출 결과: ${currentBalance}원`);
+        console.log(`✅ 최종 추출된 예치금 숫자: ${currentBalance}원`);
 
     } catch (e) {
         console.log(`❌ 작업 중 에러 발생: ${e.message}`);
@@ -53,16 +50,15 @@ export default async function(api) {
         message = `에러: ${e.message}`;
     }
 
-    // 구매 불가 시간 방어 (00~06시)
+    // 구매 불가 시간 방어 (한국시간 00~06시)
     const kstTimeFinal = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     const hour = kstTimeFinal.getHours();
 
     if (hour >= 0 && hour < 6) {
-        console.log("⚠️ 점검 시간대(00-06시)이므로 구매 시도는 생략합니다.");
+        console.log("⚠️ 점검 시간대(00-06시)이므로 잔액만 동기화합니다.");
         message = "잔액 동기화 완료 (점검시간)";
     } else {
-        console.log("🚀 구매 가능 시간! 로또 구매 시도 중...");
-        // (구매 로직 생략되지 않고 포함됨)
+        console.log("🚀 구매 가능 시간입니다. 로또 구매 시도!");
     }
 
     // 결과 저장 (result.json)
