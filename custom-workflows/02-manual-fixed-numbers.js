@@ -24,7 +24,7 @@ export default async ({ purchaseManual }) => {
 function filterError(rawMsg) {
   // 사이트에서 보내는 메시지 핵심 키워드 매칭
   if (rawMsg.includes("한도") || rawMsg.includes("5,000원")) {
-    return "오늘 구매 한도(5,000원)를 초과했습니다.";
+    return "이번주 구매 한도(5,000원)를 초과했습니다.";
   }
   if (rawMsg.includes("예치금") || rawMsg.includes("잔액") || rawMsg.includes("부족")) {
     return "예치금이 부족합니다. 충전이 필요합니다.";
