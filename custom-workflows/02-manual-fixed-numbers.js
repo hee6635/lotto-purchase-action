@@ -10,52 +10,59 @@ export default async function(api) {
     if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
     try {
-        console.log("=== 🌅 [6시 정각] 점검 종료 및 실전 데이터 추출 ===");
-        
-        // 1. PC 메인 접속 (6시 이후엔 점검 팝업이 사라집니다)
-        console.log("📡 동행복권 PC 메인 페이지 접속 중...");
-        await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle" });
-        await page.waitForTimeout(5000); // 6시 직후 서버 부하 대비 5초 대기
+        console.log("=== 📡 [네트워크 통신망 가로채기] 감시 모드 가동 ===");
 
-        // 2. 🔍 [추적] 화면에 숨겨진 잔액 변수 및 태그 싹 다 뒤지기
-        const debugData = await page.evaluate(() => {
-            // 사이트 내부 자바스크립트 변수에 잔액이 있는지 확인
-            const win = window;
-            return {
-                innerMoney: win.curCash || win.cashBalance || "없음",
-                tagMoney: document.querySelector('.money strong')?.innerText || "태그없음",
-                myMoney: document.querySelector('.my_money')?.innerText || "영역없음"
-            };
+        // 1. 🔍 [추적 모드] 서버가 보내는 모든 응답을 실시간 감시
+        page.on('response', async (response) => {
+            try {
+                const url = response.url();
+                // 잔액 데이터가 포함된 API 주소를 포착했을 때
+                if (url.includes("cashBalanceApi") || url.includes("cashBalance")) {
+                    const json = await response.json();
+                    console.log("------------------------------------------");
+                    console.log("🎯 [서버 응답 가로채기 성공!]");
+                    console.log(JSON.stringify(json, null, 2));
+                    
+                    if (json.cashBalance) {
+                        currentBalance = json.cashBalance.replace(/[^0-9]/g, '');
+                        console.log(`💰 확인된 진짜 잔액: ${currentBalance}원`);
+                    }
+                    console.log("------------------------------------------");
+                }
+            } catch (e) {
+                // 응답이 JSON이 아닌 경우는 무시
+            }
         });
 
-        console.log("------------------------------------------");
-        console.log("👀 [감시: 화면 내부 데이터 상태]");
-        console.log(`변수 잔액: ${debugData.innerMoney}`);
-        console.log(`태그 잔액: ${debugData.tagMoney}`);
-        console.log(`영역 잔액: ${debugData.myMoney}`);
-        console.log("------------------------------------------");
+        // 2. 메인 페이지 접속 (접속하면 자동으로 위 응답 리스너가 가로챕니다)
+        console.log("📡 데이터 포착을 위해 메인 페이지 접속 중...");
+        await page.goto("https://dhlottery.co.kr/common.do?method=main", { waitUntil: "networkidle" });
+        
+        // 데이터가 날아올 때까지 잠시 대기
+        await page.waitForTimeout(5000);
 
-        // 3. 잔액 확정 로직
-        if (debugData.tagMoney !== "태그없음") {
-            currentBalance = debugData.tagMoney.replace(/[^0-9]/g, '');
-        } else if (debugData.innerMoney !== "없음") {
-            currentBalance = debugData.innerMoney.toString().replace(/[^0-9]/g, '');
-        } else {
-            // 최후의 수단: 텍스트 긁기
-            const bodyText = await page.evaluate(() => document.body.innerText);
-            const match = bodyText.match(/예치금\s*[:\n]?\s*([0-9,]+)\s*원/);
-            currentBalance = match ? match[1].replace(/[^0-9]/g, '') : "0";
+        // 3. 만약 위에서 가로채지 못했다면 최후의 수단으로 직접 변수 확인
+        if (currentBalance === "--" || currentBalance === "0") {
+            console.log("⚠️ 자동 가로채기 실패, 수동으로 서버에 재요청합니다...");
+            const manualResult = await page.evaluate(async () => {
+                const res = await fetch("/user.do?method=cashBalanceApi");
+                return await res.json();
+            });
+            console.log("👀 [수동 요청 결과]:", JSON.stringify(manualResult));
+            if (manualResult.cashBalance) {
+                currentBalance = manualResult.cashBalance.replace(/[^0-9]/g, '');
+            }
         }
 
         console.log(`✅ 최종 확정 잔액: ${currentBalance}원`);
 
     } catch (e) {
-        console.log(`❌ 에러 발생: ${e.message}`);
+        console.log(`❌ 작업 중 에러 발생: ${e.message}`);
         status = "fail";
     }
 
-    // 4. 로또 구매 시도 (6시 지났으므로 무조건 시도!)
-    console.log("🚀 아침 6시! 구매 제한 해제. 로또 구매를 시도합니다.");
+    // 4. 로또 구매 로직 (시간 제한 없이 시도)
+    console.log("🚀 로또 실전 구매를 시도합니다.");
     try {
         const inputEnv = process.env.INPUT_LOTTO_NUMBERS;
         const targetNumbers = inputEnv ? inputEnv.split(',').map(Number) : [10, 16, 21, 37, 42, 45];
@@ -63,18 +70,17 @@ export default async function(api) {
         if (api.purchaseManual) {
             await api.purchaseManual([targetNumbers]);
             console.log(`✅ 구매 성공: [${targetNumbers.join(', ')}]`);
-            message = "로또 구매 및 잔액 동기화 성공!";
+            message = "구매 및 잔액 업데이트 완료";
         }
     } catch (err) {
-        console.log(`❌ 구매 시도 중 알림: ${err.message} (이미 구매했거나 잔액 부족일 수 있음)`);
-        message = `구매 알림: ${err.message}`;
+        console.log(`❌ 구매 결과 알림: ${err.message}`);
+        message = `알림: ${err.message}`;
     }
 
     // 결과 저장
     try {
         const resultData = { balance: currentBalance, status, message, last_run: new Date().toISOString() };
         fs.writeFileSync('result.json', JSON.stringify(resultData, null, 2));
-        console.log("✅ result.json 업데이트 완료");
     } catch (e) {}
 
     return { status, message, balance: currentBalance };
