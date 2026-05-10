@@ -56069,10 +56069,14 @@ function run() {
                     console.log(`[Main] Manual purchase successful: ${result.length} games`);
                     return result;
                 }),
-                generateExcluding: (exclude, count) => {
+                                generateExcluding: (exclude, count) => {
                     console.log(`[Main] Generating ${count} games excluding ${exclude.length} sets`);
                     return generateExcluding(exclude, count);
-                }
+                }, // 👈 여기에 콤마를 확실히 찍었습니다!
+                page: page,      // 👈 추가
+                context: context, // 👈 추가
+                browser: browser  // 👈 추가
+
             };
             // Execute user workflow
             if (workflowFile) {
