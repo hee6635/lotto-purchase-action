@@ -12,18 +12,12 @@ export default async function(api) {
     try {
         console.log("=== 🎯 잔액 조회 및 복합 로또 구매 ===");
         await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
-        
-        // 1. 잔액 조회
         const response = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
         const json = JSON.parse(await response.text());
-        if (json?.data?.userMndp?.crntEntrsAmt !== undefined) {
-            currentBalance = String(json.data.userMndp.crntEntrsAmt);
-        } else {
-            throw new Error("JSON 구조 오류");
-        }
+        if (json?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(json.data.userMndp.crntEntrsAmt);
+        else throw new Error("JSON 구조 오류");
     } catch (e) {
-        finalStatus = "fail";
-        finalMessage = "잔액 조회 실패 (로그인 만료 가능성)";
+        finalStatus = "fail"; finalMessage = "잔액 조회 실패 (로그인 만료 가능성)";
     }
 
     let inputEnv = process.env.INPUT_LOTTO_NUMBERS || '';
@@ -42,7 +36,6 @@ export default async function(api) {
                 }
                 const validGames = targetNumbersArray.filter(game => game.length === 6);
                 if (validGames.length === 0) throw new Error("유효한 번호 조합 없음");
-                
                 purchasedGames = validGames;
 
                 console.log(`🚀 총 ${validGames.length}게임 구매 시도...`);
@@ -51,28 +44,22 @@ export default async function(api) {
                     finalMessage = `총 ${validGames.length}게임 구매 성공!`;
                 }
             } catch (err) {
-                // 💡 [개조된 현장 검시관] 모든 에러 메시지를 샅샅이 뒤집니다.
                 console.log(`⚠️ 구매 엔진 에러 감지: ${err.message}`);
                 
+                // 💡 [필터 업그레이드] 한국어 키워드 대폭 추가!
                 const failReason = await page.evaluate((internalError) => {
                     const bodyText = document.body.innerText;
-                    const alertPopup = document.querySelector('#popupLayerAlert');
-                    const alertText = alertPopup ? alertPopup.innerText.trim() : "";
-                    
-                    // 1순위: 화면에 대놓고 떠 있는 텍스트 확인
+                    // 1. 화면 텍스트 정밀 수색
                     if (bodyText.includes("구매 가능 시간이 아닙니다")) return "구매 가능 시간 아님 (06~24시)";
                     if (bodyText.includes("최대 5천원으로 제한")) return "이번 주 구매 한도 초과";
                     if (bodyText.includes("잔액이 부족")) return "예치금 잔액 부족";
-                    if (bodyText.includes("서비스 점검")) return "복권 서비스 점검 중";
                     
-                    // 2순위: 시스템 알림 팝업 확인
-                    if (alertText) return "시스템: " + alertText.replace(/\n/g, ' ').split('.')[0];
+                    // 2. 발생한 에러 메시지 내용 분석 (한국어 포함)
+                    if (internalError.includes("시간") || internalError.includes("time")) return "구매 가능 시간 아님";
+                    if (internalError.includes("한도") || internalError.includes("limit")) return "구매 한도 초과";
+                    if (internalError.includes("잔액") || internalError.includes("balance")) return "예치금 부족";
                     
-                    // 3순위: 로봇 엔진이 던진 에러 메시지 활용
-                    if (internalError.includes("time")) return "구매 가능 시간 아님";
-                    if (internalError.includes("balance")) return "예치금 부족";
-                    
-                    return "알 수 없는 에러 (로그 확인 필요)";
+                    return internalError.split('\n')[0]; // 그래도 모르면 에러 첫줄이라도 그대로 적기
                 }, err.message).catch(() => "페이지 분석 실패");
 
                 console.log(`💡 [최종 검시 결과]: ${failReason}`);
@@ -80,35 +67,26 @@ export default async function(api) {
                 finalMessage = failReason; 
             }
         } else {
-            finalStatus = "fail";
-            finalMessage = "예치금 부족 (1,000원 미만)";
+            finalStatus = "fail"; finalMessage = "예치금 부족";
         }
     }
 
-    // 결과 저장 (히스토리 누적 로직 포함)
     let historyLog = [];
     try {
         if (fs.existsSync('result.json')) {
             const oldData = JSON.parse(fs.readFileSync('result.json', 'utf8'));
-            if (oldData.history && Array.isArray(oldData.history)) historyLog = oldData.history;
+            if (oldData.history) historyLog = oldData.history;
         }
     } catch(e) {}
 
     if (inputEnv !== "SYNC_ONLY") {
-        const newRecord = {
-            date: new Date().toISOString(),
-            status: finalStatus,
-            message: finalMessage,
-            games: purchasedGames
-        };
-        historyLog.unshift(newRecord);
+        historyLog.unshift({ date: new Date().toISOString(), status: finalStatus, message: finalMessage, games: purchasedGames });
         if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
     }
 
     fs.writeFileSync('result.json', JSON.stringify({ 
         status: finalStatus, message: finalMessage, balance: currentBalance, 
-        last_run: new Date().toISOString(),
-        history: historyLog 
+        last_run: new Date().toISOString(), history: historyLog 
     }));
 
     return { status: finalStatus, balance: currentBalance };
