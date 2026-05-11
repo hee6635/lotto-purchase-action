@@ -30,9 +30,9 @@ jobs:
 
       - name: Custom purchase workflow
         uses: ./
-        # 💡 [핵심 수정] with 대신 env를 사용하여 데이터를 배달합니다.
         env:
-          APP_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
+          # 💡 [핵심 수정] JS 파일이 애타게 찾고 있던 바로 그 이름으로 전달합니다!
+          INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
         with:
           dhlottery-id: ${{ secrets.DHLOTTERY_ID }}
           dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
