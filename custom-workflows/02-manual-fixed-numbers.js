@@ -9,9 +9,15 @@ const toDateStr = (date) => {
 };
 
 const getDateRange = () => {
+  const rangeEnv = (process.env.INPUT_DATE_RANGE || '').trim();
+  if (rangeEnv && rangeEnv.includes('_')) {
+    const [start, end] = rangeEnv.split('_');
+    console.log(`📅 앱 지정 기간: ${start} ~ ${end}`);
+    return { start, end };
+  }
   const end   = new Date();
   const start = new Date();
-  start.setDate(start.getDate() - 30);
+  start.setDate(start.getDate() - 90);
   return { start: toDateStr(start), end: toDateStr(end) };
 };
 
@@ -19,9 +25,8 @@ const getDateRange = () => {
 const fetchPurchaseList = async (page) => {
   const { start, end } = getDateRange();
   const url = `https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do`
-    + `?srchStrDt=${start}&srchEndDt=${end}`
-    + `&sort=&ltGdsCd=LO40&winResult=&lramSmam=`  
-    + `&pageNum=1&recordCountPerPage=20&_=${Date.now()}`;
+    + `?srchStrDt=${start}&srchEndDt=${end}&sort=&ltGdsCd=LO40&winResult=&lramSmam=`
+    + `&pageNum=1&recordCountPerPage=50&_=${Date.now()}`;
   try {
     const res  = await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
     const json = JSON.parse(await res.text());
@@ -32,8 +37,7 @@ const fetchPurchaseList = async (page) => {
 const fetchTicketDetail = async (page, ntslOrdrNo, barcd) => {
   const { start, end } = getDateRange();
   const url = `https://www.dhlottery.co.kr/mypage/lotto645TicketDetail.do`
-    + `?ntslOrdrNo=${ntslOrdrNo}&srchStrDt=${start}&srchEndDt=${end}`
-    + `&barcd=${barcd}&_=${Date.now()}`;
+    + `?ntslOrdrNo=${ntslOrdrNo}&srchStrDt=${start}&srchEndDt=${end}&barcd=${barcd}&_=${Date.now()}`;
   try {
     const res  = await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
     const json = JSON.parse(await res.text());
@@ -49,12 +53,9 @@ const fetchWinNumbers = async (page, round) => {
     const json = JSON.parse(await res.text());
     if (json.returnValue !== 'success') return null;
     return {
-      round:   json.drwNo,
-      date:    json.drwNoDate,
+      round: json.drwNo, date: json.drwNoDate,
       numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6],
-      bonus:   json.bnusNo,
-      prize1:  json.firstWinamnt,
-      prize1Cnt: json.firstPrzwnerCo,
+      bonus: json.bnusNo, prize1: json.firstWinamnt, prize1Cnt: json.firstPrzwnerCo,
     };
   } catch (e) { return null; }
 };
@@ -62,16 +63,14 @@ const fetchWinNumbers = async (page, round) => {
 const calcRank = (myNums, winNums, bonusNum) => {
   const match = myNums.filter(n => winNums.includes(n)).length;
   const hasBonus = myNums.includes(bonusNum);
-  if (match === 6) return 1;
-  if (match === 5 && hasBonus) return 2;
-  if (match === 5) return 3;
-  if (match === 4) return 4;
-  if (match === 3) return 5;
-  return 0; 
+  if (match === 6) return 1; if (match === 5 && hasBonus) return 2;
+  if (match === 5) return 3; if (match === 4) return 4;
+  if (match === 3) return 5; return 0;
 };
 
 const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5등', 0:'낙첨' };
 
+// ── 메인 익스포트 ───────────────────────────────────────────
 export default async function(api) {
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "조종기 연결 실패" };
@@ -82,20 +81,20 @@ export default async function(api) {
   let purchasedGames = [];
   let ledgerData     = [];
 
-  // ── 1. 잔액 조회 ─────────────────────────────────────────────
+  // 1. 잔액 조회
   try {
     await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
     const res  = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
     const json = JSON.parse(await res.text());
     if (json?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(json.data.userMndp.crntEntrsAmt);
-    else throw new Error("JSON 오류");
+    else throw new Error("JSON 구조 오류");
   } catch (e) {
-    finalStatus  = "fail"; finalMessage = "잔액 조회 실패";
+    finalStatus = "fail"; finalMessage = "잔액 조회 실패";
   }
 
   let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
 
-  // ── 2. 구매 or 동기화 ────────────────────────────────────────
+  // 2. 구매 or 동기화
   if (finalStatus === "success") {
     if (inputEnv === "SYNC_ONLY") {
       finalMessage = "동기화 완료";
@@ -103,8 +102,7 @@ export default async function(api) {
       try {
         let targetNumbersArray = inputEnv ? inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))) : [[]];
         const validGames = targetNumbersArray.filter(game => game.length === 6 || game.length === 0);
-        purchasedGames   = validGames;
-
+        purchasedGames = validGames;
         if (api.purchaseManual) await api.purchaseManual(validGames.filter(g => g.length === 6));
         if (api.purchaseAuto) {
           const autoCount = validGames.filter(g => g.length === 0).length;
@@ -120,14 +118,17 @@ export default async function(api) {
           if (internalError.includes("시간"))          return "구매 가능 시간 아님";
           return internalError.split('\n')[0];
         }, err.message).catch(() => err.message);
-        finalStatus  = "fail"; finalMessage = failReason;
+        finalStatus = "fail"; finalMessage = failReason;
       }
     } else {
-      finalStatus  = "fail"; finalMessage = "예치금 부족";
+      finalStatus = "fail"; finalMessage = "예치금 부족";
     }
   }
 
-  // ── 3. 당첨내역 조회 ────────────────────────────────────────
+  // 3. 당첨내역 조회 (캐시 최적화)
+  let cachedLedger = [];
+  try { if (fs.existsSync('result.json')) cachedLedger = JSON.parse(fs.readFileSync('result.json', 'utf8')).ledger || []; } catch(e) {}
+  
   try {
     const purchaseList = await fetchPurchaseList(page);
     const uniqueOrders = [];
@@ -136,6 +137,9 @@ export default async function(api) {
       if (!seenOrders.has(item.ntslOrdrNo)) { seenOrders.add(item.ntslOrdrNo); uniqueOrders.push(item); }
     }
     for (const order of uniqueOrders) {
+      const cached = cachedLedger.find(t => t.ntslOrdrNo === order.ntslOrdrNo);
+      if (cached && cached.drawed) { ledgerData.push(cached); continue; }
+
       const ticket = await fetchTicketDetail(page, order.ntslOrdrNo, order.gmInfo);
       if (!ticket) continue;
 
@@ -143,38 +147,41 @@ export default async function(api) {
       if (ticket.drawed) winInfo = await fetchWinNumbers(page, ticket.game_round);
 
       const games = ticket.game_dtl.map(g => {
+        const myNums = g.num;
         let rank = g.rank; 
         let rankLabel = '미추첨';
         if (ticket.drawed && winInfo) {
-          rank = calcRank(g.num, winInfo.numbers, winInfo.bonus);
+          rank = calcRank(myNums, winInfo.numbers, winInfo.bonus);
           rankLabel = RANK_LABEL[rank];
         }
-        return { idx: g.idx, type: g.type === 1 ? '수동' : '자동', numbers: g.num, rank: rank, rankLabel: rankLabel, amt: g.amt };
+        return { idx: g.idx, type: g.type === 1 ? '수동' : '자동', numbers: myNums, rank: rank, rankLabel: rankLabel, amt: g.amt };
       });
-
       ledgerData.push({ ntslOrdrNo: order.ntslOrdrNo, buyDate: order.eltOrdrDt, round: ticket.game_round, drawDate: ticket.draw_date, drawed: ticket.drawed, winTotalAmt: ticket.win_total_amt, games: games, winInfo: winInfo });
     }
   } catch (e) {}
 
-  // ── 4. 장부 저장 ──────────────────────────────────────
+  // 4. 저장 로직 (Merge)
   let historyLog = [];
   try { if (fs.existsSync('result.json')) historyLog = JSON.parse(fs.readFileSync('result.json', 'utf8')).history || []; } catch(e) {}
-  
   if (inputEnv !== "SYNC_ONLY" && finalStatus === "success") {
     historyLog.unshift({ date: new Date().toISOString(), status: finalStatus, message: finalMessage, games: purchasedGames });
     if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
   }
 
-  fs.writeFileSync('result.json', JSON.stringify({ status: finalStatus, message: finalMessage, balance: currentBalance, last_run: new Date().toISOString(), history: historyLog, ledger: ledgerData }, null, 2));
+  const newOrderNos  = new Set(ledgerData.map(t => t.ntslOrdrNo));
+  const oldOnlyCache = cachedLedger.filter(t => !newOrderNos.has(t.ntslOrdrNo));
+  const mergedLedger = [...ledgerData, ...oldOnlyCache].sort((a, b) => new Date(b.buyDate) - new Date(a.buyDate)).slice(0, 200);
 
-  // ── 5. 📨 텔레그램 알림 발송 ──────────────────────────────
+  fs.writeFileSync('result.json', JSON.stringify({ status: finalStatus, message: finalMessage, balance: currentBalance, last_run: new Date().toISOString(), history: historyLog, ledger: mergedLedger }, null, 2));
+
+  // 5. 📨 텔레그램 발송 (누락 보완)
   try {
       const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
       const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
       if (tgToken && tgChatId) {
           let tgMessage = (inputEnv === "SYNC_ONLY") 
-              ? `📡 [로또 예치금 조회]\n- 잔액: ${Number(currentBalance).toLocaleString()}원`
-              : `${finalStatus === "success" ? "🎉" : "⚠️"} [로또 결과 보고]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+              ? `📡 [로또 조회 완료]\n- 캐시 장부: ${mergedLedger.length}건 유지\n- 현재 잔액: ${Number(currentBalance).toLocaleString()}원`
+              : `${finalStatus === "success" ? "🎉" : "⚠️"} [로또 결과 보고]\n- 상태: ${finalMessage}\n- 현재 잔액: ${Number(currentBalance).toLocaleString()}원`;
 
           await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgChatId, text: tgMessage }) });
       }
