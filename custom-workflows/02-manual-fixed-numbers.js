@@ -1,121 +1,184 @@
 import fs from 'fs';
 
+// ── 날짜 헬퍼 ──────────────────────────────────────────────
+const toDateStr = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+};
+
+const getDateRange = () => {
+  const end   = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 30);
+  return { start: toDateStr(start), end: toDateStr(end) };
+};
+
+// ── 당첨내역 조회 함수들 ────────────────────────────────────
+const fetchPurchaseList = async (page) => {
+  const { start, end } = getDateRange();
+  const url = `https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do`
+    + `?srchStrDt=${start}&srchEndDt=${end}`
+    + `&sort=&ltGdsCd=LO40&winResult=&lramSmam=`  
+    + `&pageNum=1&recordCountPerPage=20&_=${Date.now()}`;
+  try {
+    const res  = await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
+    const json = JSON.parse(await res.text());
+    return json?.data?.list ?? [];
+  } catch (e) { return []; }
+};
+
+const fetchTicketDetail = async (page, ntslOrdrNo, barcd) => {
+  const { start, end } = getDateRange();
+  const url = `https://www.dhlottery.co.kr/mypage/lotto645TicketDetail.do`
+    + `?ntslOrdrNo=${ntslOrdrNo}&srchStrDt=${start}&srchEndDt=${end}`
+    + `&barcd=${barcd}&_=${Date.now()}`;
+  try {
+    const res  = await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
+    const json = JSON.parse(await res.text());
+    if (!json?.data?.success) return null;
+    return json.data.ticket;
+  } catch (e) { return null; }
+};
+
+const fetchWinNumbers = async (page, round) => {
+  const url = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${round}`;
+  try {
+    const res  = await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 });
+    const json = JSON.parse(await res.text());
+    if (json.returnValue !== 'success') return null;
+    return {
+      round:   json.drwNo,
+      date:    json.drwNoDate,
+      numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6],
+      bonus:   json.bnusNo,
+      prize1:  json.firstWinamnt,
+      prize1Cnt: json.firstPrzwnerCo,
+    };
+  } catch (e) { return null; }
+};
+
+const calcRank = (myNums, winNums, bonusNum) => {
+  const match = myNums.filter(n => winNums.includes(n)).length;
+  const hasBonus = myNums.includes(bonusNum);
+  if (match === 6) return 1;
+  if (match === 5 && hasBonus) return 2;
+  if (match === 5) return 3;
+  if (match === 4) return 4;
+  if (match === 3) return 5;
+  return 0; 
+};
+
+const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5등', 0:'낙첨' };
+
 export default async function(api) {
-    const page = api.page || (api.session ? api.session.page : null);
-    if (!page) return { status: "fail", message: "조종기 연결 실패" };
+  const page = api.page || (api.session ? api.session.page : null);
+  if (!page) return { status: "fail", message: "조종기 연결 실패" };
 
-    let currentBalance = "0";
-    let finalStatus = "success";
-    let finalMessage = "작업 완료";
-    let purchasedGames = [];
+  let currentBalance = "0";
+  let finalStatus    = "success";
+  let finalMessage   = "작업 완료";
+  let purchasedGames = [];
+  let ledgerData     = [];
 
-    // 1. 잔액 조회
-    try {
-        console.log("=== 🎯 잔액 조회 시작 ===");
-        await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
-        const response = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
-        const json = JSON.parse(await response.text());
-        if (json?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(json.data.userMndp.crntEntrsAmt);
-        console.log(`💰 조회된 잔액: ${currentBalance}원`);
-    } catch (e) {
-        finalStatus = "fail"; finalMessage = "잔액 조회 실패 (로그인 만료 또는 점검중)";
-    }
+  // ── 1. 잔액 조회 ─────────────────────────────────────────────
+  try {
+    await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
+    const res  = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
+    const json = JSON.parse(await res.text());
+    if (json?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(json.data.userMndp.crntEntrsAmt);
+    else throw new Error("JSON 오류");
+  } catch (e) {
+    finalStatus  = "fail"; finalMessage = "잔액 조회 실패";
+  }
 
-    let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim(); 
+  let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
 
-    // 2. 구매 로직 및 초정밀 에러 분석
-    if (finalStatus === "success" && currentBalance !== "0" && inputEnv !== "SYNC_ONLY") {
-        try {
-            let targetNumbersArray = inputEnv ? inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10))) : [[10, 16, 21, 37, 42, 45]];
-            const validGames = targetNumbersArray.filter(game => game.length === 6);
-            if (validGames.length > 0) {
-                purchasedGames = validGames;
-                console.log(`🚀 총 ${validGames.length}게임 구매 시도...`);
-                if (api.purchaseManual) {
-                    await api.purchaseManual(validGames);
-                    finalMessage = `총 ${validGames.length}게임 구매 완료!`;
-                }
-            }
-        } catch (err) {
-            // 💡 [핵심] 실패 사유를 화면 글자와 에러 코드에서 정밀하게 뽑아냅니다.
-            let failReason = "알 수 없는 구매 엔진 에러";
-            try {
-                failReason = await page.evaluate((internalError) => {
-                    const bodyText = document.body.innerText;
-                    if (bodyText.includes("구매 가능 시간이 아닙니다") || bodyText.includes("판매시간이 아닙니다")) return "구매 가능 시간 아님 (매일 06시~24시 / 토요일 06시~20시)";
-                    if (bodyText.includes("최대 5천원으로 제한")) return "이번 주 구매 한도 초과 (1계정당 5게임 제한)";
-                    if (bodyText.includes("잔액이 부족")) return "예치금 잔액 부족";
-                    if (bodyText.includes("동행복권 시스템 점검")) return "동행복권 시스템 점검 중";
-                    
-                    const lowerErr = internalError.toLowerCase();
-                    if (lowerErr.includes("time") || lowerErr.includes("closed")) return "구매 가능 시간 아님";
-                    if (lowerErr.includes("limit")) return "이번 주 구매 한도 초과";
-                    if (lowerErr.includes("balance")) return "예치금 잔액 부족";
-                    
-                    return internalError.split('\n')[0]; // 영어 에러의 첫 줄만 깔끔하게 따오기
-                }, err.message);
-            } catch(e) {
-                if (err.message.includes("Timeout")) failReason = "동행복권 서버 응답 시간 초과";
-                else failReason = err.message.split('\n')[0];
-            }
-            finalStatus = "fail"; 
-            finalMessage = failReason;
+  // ── 2. 구매 or 동기화 ────────────────────────────────────────
+  if (finalStatus === "success") {
+    if (inputEnv === "SYNC_ONLY") {
+      finalMessage = "동기화 완료";
+    } else if (parseInt(currentBalance) >= 1000) {
+      try {
+        let targetNumbersArray = inputEnv ? inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))) : [[]];
+        const validGames = targetNumbersArray.filter(game => game.length === 6 || game.length === 0);
+        purchasedGames   = validGames;
+
+        if (api.purchaseManual) await api.purchaseManual(validGames.filter(g => g.length === 6));
+        if (api.purchaseAuto) {
+          const autoCount = validGames.filter(g => g.length === 0).length;
+          if (autoCount > 0) await api.purchaseAuto(autoCount);
         }
+        finalMessage = `${validGames.length}게임 구매 성공!`;
+      } catch (err) {
+        const failReason = await page.evaluate((internalError) => {
+          const t = document.body.innerText;
+          if (t.includes("구매 가능 시간이 아닙니다")) return "구매 가능 시간 아님 (06~24시)";
+          if (t.includes("최대 5천원으로 제한"))       return "이번 주 구매 한도 초과";
+          if (t.includes("잔액이 부족"))               return "예치금 잔액 부족";
+          if (internalError.includes("시간"))          return "구매 가능 시간 아님";
+          return internalError.split('\n')[0];
+        }, err.message).catch(() => err.message);
+        finalStatus  = "fail"; finalMessage = failReason;
+      }
+    } else {
+      finalStatus  = "fail"; finalMessage = "예치금 부족";
     }
+  }
 
-    // 3. 장부(result.json) 기록
-    let historyLog = [];
-    try {
-        if (fs.existsSync('result.json')) historyLog = JSON.parse(fs.readFileSync('result.json', 'utf8')).history || [];
-    } catch(e) {}
-    
-    if (inputEnv !== "SYNC_ONLY") {
-        historyLog.unshift({ date: new Date().toISOString(), status: finalStatus, message: finalMessage, games: purchasedGames });
-        if (historyLog.length > 20) historyLog = historyLog.slice(0, 20); // 최근 20건만 유지
+  // ── 3. 당첨내역 조회 ────────────────────────────────────────
+  try {
+    const purchaseList = await fetchPurchaseList(page);
+    const uniqueOrders = [];
+    const seenOrders   = new Set();
+    for (const item of purchaseList) {
+      if (!seenOrders.has(item.ntslOrdrNo)) { seenOrders.add(item.ntslOrdrNo); uniqueOrders.push(item); }
     }
-    
-    fs.writeFileSync('result.json', JSON.stringify({ status: finalStatus, message: finalMessage, balance: currentBalance, last_run: new Date().toISOString(), history: historyLog }));
+    for (const order of uniqueOrders) {
+      const ticket = await fetchTicketDetail(page, order.ntslOrdrNo, order.gmInfo);
+      if (!ticket) continue;
 
-    // 4. 📨 텔레그램 영수증 정교화 발송
-    console.log("=== 📨 텔레그램 발송 시도 ===");
-    try {
-        const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-        const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
+      let winInfo = null;
+      if (ticket.drawed) winInfo = await fetchWinNumbers(page, ticket.game_round);
 
-        if (tgToken && tgChatId) {
-            let tgMessage = "";
-            
-            if (inputEnv === "SYNC_ONLY") {
-                tgMessage = `📡 [로또 예치금 동기화 완료]\n\n💰 현재 잔액: ${Number(currentBalance).toLocaleString()}원`;
-            } 
-            else if (finalStatus === "success") {
-                // 💡 [성공 영수증] 구매한 번호를 예쁘게 나열해줍니다.
-                let gamesText = "";
-                purchasedGames.forEach((game, i) => {
-                    gamesText += `[${i + 1}게임] ${game.join(", ")}\n`;
-                });
-                tgMessage = `🎉 [로또 구매 성공!]\n\n💰 결제 후 잔액: ${Number(currentBalance).toLocaleString()}원\n\n🎯 [구매 번호]\n${gamesText}`;
-            } 
-            else {
-                // 💡 [실패 영수증] 실패 사유를 명확하게 경고해줍니다.
-                tgMessage = `⚠️ [로또 구매 실패]\n\n🛑 사유: ${finalMessage}\n💰 현재 잔액: ${Number(currentBalance).toLocaleString()}원`;
-            }
-
-            const res = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: tgChatId, text: tgMessage })
-            });
-            
-            const resJson = await res.json();
-            if (resJson.ok) console.log("✅ 텔레그램 발송 성공!");
-            else console.log(`❌ 텔레그램 발송 에러: ${resJson.description}`);
-        } else {
-            console.log("⚠️ 텔레그램 토큰 또는 Chat ID가 설정되지 않았습니다.");
+      const games = ticket.game_dtl.map(g => {
+        let rank = g.rank; 
+        let rankLabel = '미추첨';
+        if (ticket.drawed && winInfo) {
+          rank = calcRank(g.num, winInfo.numbers, winInfo.bonus);
+          rankLabel = RANK_LABEL[rank];
         }
-    } catch(e) { 
-        console.log("❌ 발송 오류:", e.message); 
-    }
+        return { idx: g.idx, type: g.type === 1 ? '수동' : '자동', numbers: g.num, rank: rank, rankLabel: rankLabel, amt: g.amt };
+      });
 
-    return { status: finalStatus, balance: currentBalance };
+      ledgerData.push({ ntslOrdrNo: order.ntslOrdrNo, buyDate: order.eltOrdrDt, round: ticket.game_round, drawDate: ticket.draw_date, drawed: ticket.drawed, winTotalAmt: ticket.win_total_amt, games: games, winInfo: winInfo });
+    }
+  } catch (e) {}
+
+  // ── 4. 장부 저장 ──────────────────────────────────────
+  let historyLog = [];
+  try { if (fs.existsSync('result.json')) historyLog = JSON.parse(fs.readFileSync('result.json', 'utf8')).history || []; } catch(e) {}
+  
+  if (inputEnv !== "SYNC_ONLY" && finalStatus === "success") {
+    historyLog.unshift({ date: new Date().toISOString(), status: finalStatus, message: finalMessage, games: purchasedGames });
+    if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
+  }
+
+  fs.writeFileSync('result.json', JSON.stringify({ status: finalStatus, message: finalMessage, balance: currentBalance, last_run: new Date().toISOString(), history: historyLog, ledger: ledgerData }, null, 2));
+
+  // ── 5. 📨 텔레그램 알림 발송 ──────────────────────────────
+  try {
+      const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+      const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
+      if (tgToken && tgChatId) {
+          let tgMessage = (inputEnv === "SYNC_ONLY") 
+              ? `📡 [로또 예치금 조회]\n- 잔액: ${Number(currentBalance).toLocaleString()}원`
+              : `${finalStatus === "success" ? "🎉" : "⚠️"} [로또 결과 보고]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+
+          await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgChatId, text: tgMessage }) });
+      }
+  } catch(e) {}
+
+  return { status: finalStatus, balance: currentBalance };
 }
