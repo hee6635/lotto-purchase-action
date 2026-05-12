@@ -1,7 +1,24 @@
 {
   "balance1": "20000",
-  "balance2": "1000",
+  "balance2": "0",
   "history": [
+    {
+      "date": "2026-05-12T11:37:20.565Z",
+      "acc": "계정 2",
+      "status": "success",
+      "message": "1게임 구매 성공! (예치금 부족으로 4게임 제외됨)",
+      "games": [
+        [
+          7,
+          9,
+          26,
+          29,
+          32,
+          37
+        ]
+      ],
+      "isScheduled": false
+    },
     {
       "date": "2026-05-12T11:35:49.743Z",
       "acc": "계정 1",
@@ -584,7 +601,7 @@
     }
   ],
   "reservation": null,
-  "last_run": "2026-05-12T11:35:49.743Z",
+  "last_run": "2026-05-12T11:37:20.565Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
