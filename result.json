@@ -1,5 +1,5 @@
 {
-  "balance1": "15000",
+  "balance1": "20000",
   "balance2": "1000",
   "history": [
     {
@@ -710,7 +710,7 @@
     }
   ],
   "reservation": null,
-  "last_run": "2026-05-12T07:09:19.520Z",
+  "last_run": "2026-05-12T08:01:41.905Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
