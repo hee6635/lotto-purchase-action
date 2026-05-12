@@ -1,7 +1,7 @@
 name: 로또 구매 (수동 + 스케줄)
 on:
   schedule:
-    - cron: '0 3 * * 0'
+    - cron: '0 8 * * 1' # 매주 월요일 한국시간 오후 5시 (UTC 오전 8시)
   workflow_dispatch:
     inputs:
       command_data:
@@ -38,7 +38,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Custom purchase workflow
+      # ─── 수동 실행 (앱에서 즉시 구입/동기화 눌렀을 때) ───
+      - name: Purchase (Manual)
+        if: github.event_name == 'workflow_dispatch'
         uses: ./
         env:
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
@@ -46,13 +48,44 @@ jobs:
           INPUT_ACCOUNT_MODE: ${{ github.event.inputs.account_mode }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          IS_SCHEDULED: 'false'
         with:
-          # 💡 [해결] 여기서 확실하게 스위칭! acc2면 ID_2를, 아니면 기본 ID를 줍니다.
           dhlottery-id: ${{ github.event.inputs.account_mode == 'acc2' && secrets.DHLOTTERY_ID_2 || secrets.DHLOTTERY_ID }}
           dhlottery-password: ${{ github.event.inputs.account_mode == 'acc2' && secrets.DHLOTTERY_PASSWORD_2 || secrets.DHLOTTERY_PASSWORD }}
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
 
+      # ─── 월요일 오후 5시 예약 자동 실행 (계정 1) ───
+      - name: Scheduled Purchase (Acc 1)
+        if: github.event_name == 'schedule'
+        uses: ./
+        env:
+          INPUT_ACCOUNT_MODE: 'acc1'
+          IS_SCHEDULED: 'true'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          dhlottery-id: ${{ secrets.DHLOTTERY_ID }}
+          dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
+          github-token: ${{ github.token }}
+          workflow-file: custom-workflows/02-manual-fixed-numbers.js
+
+      # ─── 월요일 오후 5시 예약 자동 실행 (계정 2) ───
+      - name: Scheduled Purchase (Acc 2)
+        if: github.event_name == 'schedule'
+        uses: ./
+        env:
+          INPUT_ACCOUNT_MODE: 'acc2'
+          IS_SCHEDULED: 'true'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          dhlottery-id: ${{ secrets.DHLOTTERY_ID_2 }}
+          dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD_2 }}
+          github-token: ${{ github.token }}
+          workflow-file: custom-workflows/02-manual-fixed-numbers.js
+
+      # ─── 장부 갱신 및 저장 ───
       - name: Save and Push Result
         run: |
           git config --global --add safe.directory /__w/lotto-purchase-action/lotto-purchase-action
@@ -61,7 +94,7 @@ jobs:
           
           if [ -f "result.json" ]; then
             git add result.json
-            git commit -m "Update result.json" || echo "No changes to commit"
+            git commit -m "Auto Update: Result and Reservation" || echo "No changes to commit"
             git pull --rebase origin main
             git push origin main
           else
