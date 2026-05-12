@@ -600,8 +600,15 @@
       "acc": "계정 1"
     }
   ],
-  "reservation": null,
-  "last_run": "2026-05-12T13:06:49.531Z",
+  "reservation": {
+    "isActive": true,
+    "targetMode": "both",
+    "type": "auto",
+    "count": 10,
+    "endDate": "20261112",
+    "favs": []
+  },
+  "last_run": "2026-05-12T15:33:40.936Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
