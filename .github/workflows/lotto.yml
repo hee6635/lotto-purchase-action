@@ -16,6 +16,10 @@ on:
         description: '조회 기간 (YYYYMMDD_YYYYMMDD)'
         required: false
         default: ''
+      account_mode:
+        description: '계정 모드 (acc1 또는 acc2)'
+        required: false
+        default: 'acc1'
 
 permissions:
   contents: write
@@ -34,16 +38,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Set Credentials based on Account Mode
+        id: creds
+        run: |
+          if [ "${{ github.event.inputs.account_mode }}" == "acc2" ]; then
+            echo "DHL_ID=${{ secrets.DHLOTTERY_ID_2 }}" >> $GITHUB_ENV
+            echo "DHL_PW=${{ secrets.DHLOTTERY_PASSWORD_2 }}" >> $GITHUB_ENV
+          else
+            echo "DHL_ID=${{ secrets.DHLOTTERY_ID }}" >> $GITHUB_ENV
+            echo "DHL_PW=${{ secrets.DHLOTTERY_PASSWORD }}" >> $GITHUB_ENV
+          fi
+
       - name: Custom purchase workflow
         uses: ./
         env:
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
           INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
+          INPUT_ACCOUNT_MODE: ${{ github.event.inputs.account_mode }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
-          dhlottery-id: ${{ secrets.DHLOTTERY_ID }}
-          dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
+          dhlottery-id: ${{ env.DHL_ID }}
+          dhlottery-password: ${{ env.DHL_PW }}
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
 
@@ -55,7 +71,7 @@ jobs:
           
           if [ -f "result.json" ]; then
             git add result.json
-            git commit -m "Update real balance and history" || echo "No changes to commit"
+            git commit -m "Update result.json" || echo "No changes to commit"
             git pull --rebase origin main
             git push origin main
           else
