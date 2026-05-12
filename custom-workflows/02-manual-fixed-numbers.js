@@ -56,7 +56,7 @@ const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
   const accMode = (process.env.INPUT_ACCOUNT_MODE || 'acc1').trim();
-  const displayAccName = accMode === 'acc2' ? '계정 2' : '계정 1'; // 💡 개별 계정 이름 확정
+  const displayAccName = accMode === 'acc2' ? '계정 2' : '계정 1'; 
   const accName = accMode === 'both' ? '부부 모두' : displayAccName; 
   let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
 
@@ -144,20 +144,36 @@ export default async function(api) {
     if (parseInt(currentBalance) >= 1000) {
       try {
         let targetNumbersArray = inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n)));
-        const validGames = targetNumbersArray.filter(game => game.length === 6);
+        let validGames = targetNumbersArray.filter(game => game.length === 6);
+        
+        // 💡 [핵심 추가] 내 잔고에 맞춰서 알아서 게임 수를 자른다!
+        const maxAffordable = Math.floor(parseInt(currentBalance) / 1000);
+        let skippedCount = 0;
+        
+        // 돈이 부족하면 살 수 있는 만큼만 남기고 자름
+        if (validGames.length > maxAffordable) {
+            skippedCount = validGames.length - maxAffordable;
+            validGames = validGames.slice(0, maxAffordable);
+        }
+
         purchasedGames = validGames;
         
         if (api.purchaseManual && validGames.length > 0) {
           await api.purchaseManual(validGames);
+          finalMessage = `${validGames.length}게임 구매 성공!`;
+          
+          // 잘라낸 수량이 있으면 텔레그램 메시지에 티를 낸다
+          if (skippedCount > 0) {
+              finalMessage += ` (예치금 부족으로 ${skippedCount}게임 제외됨)`;
+          }
         } else if (validGames.length === 0) {
           throw new Error("유효한 번호가 없습니다.");
         }
-        finalMessage = `${validGames.length}게임 구매 성공!`;
       } catch (err) { 
-        finalStatus = "fail"; finalMessage = "구매 에러 (한도초과 등)"; 
+        finalStatus = "fail"; finalMessage = "구매 에러 (주간 한도초과 등)"; 
       }
     } else { 
-      finalStatus = "fail"; finalMessage = "잔액 부족 (충전 대기중)"; 
+      finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
   }
 
@@ -183,7 +199,6 @@ export default async function(api) {
     for (const order of uniqueOrders) {
       const cached = results.ledger.find(t => t.ntslOrdrNo === order.ntslOrdrNo);
       if (cached && cached.drawed) { 
-        // 💡 핵심: 기존 캐시 데이터에 강제로 계정(acc) 꼬리표 부착!
         if (!cached.acc) cached.acc = displayAccName; 
         ledgerData.push(cached); 
         continue; 
@@ -196,7 +211,6 @@ export default async function(api) {
         if (ticket.drawed && winInfo) { rank = calcRank(g.num, winInfo.numbers, winInfo.bonus); rankLabel = RANK_LABEL[rank]; }
         return { idx: g.idx, type: g.type === 1 ? '수동' : '자동', numbers: g.num, rank: rank, rankLabel: rankLabel, amt: g.amt };
       });
-      // 💡 핵심: 새로운 영수증을 저장할 때 계정(acc) 정보를 같이 저장!
       ledgerData.push({ acc: displayAccName, ntslOrdrNo: order.ntslOrdrNo, buyDate: order.eltOrdrDt, round: ticket.game_round, drawDate: ticket.draw_date, drawed: ticket.drawed, winTotalAmt: ticket.win_total_amt, games: games, winInfo: winInfo });
     }
   } catch (e) {}
