@@ -44,8 +44,15 @@
       ]
     }
   ],
-  "reservation": null,
-  "last_run": "2026-05-12T09:13:20.426Z",
+  "reservation": {
+    "isActive": true,
+    "targetMode": "acc2",
+    "type": "auto",
+    "count": 5,
+    "endDate": "20260612",
+    "favs": []
+  },
+  "last_run": "2026-05-12T09:14:53.216Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
