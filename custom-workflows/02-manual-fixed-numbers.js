@@ -79,7 +79,7 @@ export default async function(api) {
   let purchasedGames = [];
   let ledgerData = [];
 
-  // 1. 잔액 조회
+  // 1. 잔액 조회 (구매 전)
   try {
     await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
     const res = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
@@ -101,12 +101,27 @@ export default async function(api) {
         let targetNumbersArray = inputEnv ? inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))) : [[]];
         const validGames = targetNumbersArray.filter(game => game.length === 6 || game.length === 0);
         purchasedGames = validGames;
+        
         if (api.purchaseManual) await api.purchaseManual(validGames.filter(g => g.length === 6));
         if (api.purchaseAuto) {
           const autoCount = validGames.filter(g => g.length === 0).length;
           if (autoCount > 0) await api.purchaseAuto(autoCount);
         }
         finalMessage = `${validGames.length}게임 구매 성공!`;
+        
+        // 💡 [기술자님 로직 적용] 구매 후, 뺄셈 대신 "실제 동행복권 서버에서 잔액을 한 번 더 조회" 합니다!
+        try {
+          console.log("💰 구매 완료! 갱신된 잔액을 서버에서 다시 가져옵니다...");
+          const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 15000 });
+          const reJson = JSON.parse(await reRes.text());
+          if (reJson?.data?.userMndp?.crntEntrsAmt !== undefined) {
+            currentBalance = String(reJson.data.userMndp.crntEntrsAmt);
+            console.log(`💰 실제 남은 잔액: ${currentBalance}원`);
+          }
+        } catch (e) {
+          console.log("⚠️ 구매 후 잔액 갱신 조회 실패 (하지만 구매는 정상처리됨)");
+        }
+
       } catch (err) {
         const failReason = await page.evaluate((internalError) => {
           const t = document.body.innerText;
@@ -183,7 +198,7 @@ export default async function(api) {
 
   fs.writeFileSync('result.json', JSON.stringify({ status: finalStatus, message: finalMessage, balance1: b1, balance2: b2, last_run: new Date().toISOString(), history: historyLog, ledger: mergedLedger }, null, 2));
 
-  // 6. 📨 텔레그램 발송 (계정명 명시)
+  // 6. 📨 텔레그램 발송
   try {
       const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
       const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
