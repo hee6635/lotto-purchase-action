@@ -1,8 +1,9 @@
 {
   "status": "success",
   "message": "동기화 완료",
-  "balance": "15000",
-  "last_run": "2026-05-12T03:15:17.245Z",
+  "balance1": "15000",
+  "balance2": "--",
+  "last_run": "2026-05-12T04:39:30.274Z",
   "history": [
     {
       "date": "2026-05-11T18:58:44.520Z",
