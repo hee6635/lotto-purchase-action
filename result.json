@@ -709,8 +709,14 @@
       "winInfo": null
     }
   ],
-  "reservation": null,
-  "last_run": "2026-05-12T08:03:09.903Z",
+  "reservation": {
+    "isActive": true,
+    "type": "auto",
+    "count": 5,
+    "endDate": "20260612",
+    "favs": []
+  },
+  "last_run": "2026-05-12T08:04:26.941Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
