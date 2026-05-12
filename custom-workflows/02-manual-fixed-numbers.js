@@ -64,6 +64,7 @@ export default async function(api) {
     return { status: "success" };
   }
 
+  // 💡 [방어 코드] 서버 예약 봇이 스스로 100% 난수를 채워 넣음
   if (isScheduled) {
     const res = results.reservation;
     if (!res || !res.isActive) return { status: "success" }; 
@@ -108,16 +109,23 @@ export default async function(api) {
     if (parseInt(currentBalance) >= 1000) {
       try {
         let targetNumbersArray = inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n)));
-        const validGames = targetNumbersArray.filter(game => game.length === 6 || game.length === 0);
+        
+        // 💡 [핵심 방어] 무조건 6자리가 꽉 찬 데이터(validGames)만 추출
+        const validGames = targetNumbersArray.filter(game => game.length === 6);
         purchasedGames = validGames;
-        if (api.purchaseManual) await api.purchaseManual(validGames.filter(g => g.length === 6));
-        if (api.purchaseAuto) { const autoCount = validGames.filter(g => g.length === 0).length; if (autoCount > 0) await api.purchaseAuto(autoCount); }
+        
+        // 💡 불안정한 api.purchaseAuto를 완전히 제거하고 Manual(수동 지정)로만 무조건 밀어넣음!
+        if (api.purchaseManual && validGames.length > 0) {
+            await api.purchaseManual(validGames);
+        } else if (validGames.length === 0) {
+            throw new Error("유효한 번호가 전송되지 않았습니다.");
+        }
+
         finalMessage = `${validGames.length}게임 구매 성공!`;
         const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 15000 });
         const reJson = JSON.parse(await reRes.text());
         if (reJson?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(reJson.data.userMndp.crntEntrsAmt);
       } catch (err) { 
-        // 💡 [수정] 통째로 지워졌던 상세 에러 메시지 복구!
         const failReason = await page.evaluate((internalError) => {
           const t = document.body.innerText || "";
           if (t.includes("구매 가능 시간이 아닙니다")) return "구매 시간 아님";
@@ -154,7 +162,6 @@ export default async function(api) {
   } catch (e) {}
 
   if (inputEnv !== "SYNC_ONLY") {
-    // 실패해도 이력에 남기도록 수정 (한도초과 확인용)
     results.history.unshift({ date: new Date().toISOString(), acc: accName, status: finalStatus, message: finalMessage, games: purchasedGames, isScheduled: isScheduled });
     if (results.history.length > 30) results.history = results.history.slice(0, 30);
   }
