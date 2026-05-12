@@ -41,7 +41,284 @@
           "rankLabel": "미추첨",
           "amt": 0
         }
-      ]
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026051000569458396",
+      "buyDate": "2026-05-10",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            5,
+            7,
+            19,
+            32,
+            40,
+            45
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026051000569456785",
+      "buyDate": "2026-05-10",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            3,
+            10,
+            18,
+            25,
+            31,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026051000569421342",
+      "buyDate": "2026-05-10",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            7,
+            21,
+            31,
+            36,
+            37,
+            45
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026051000569384552",
+      "buyDate": "2026-05-10",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            13,
+            22,
+            25,
+            33,
+            35,
+            40
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026050400568271962",
+      "buyDate": "2026-05-04",
+      "round": 1223,
+      "drawDate": "2026/05/09",
+      "drawed": true,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            1,
+            4,
+            17,
+            35,
+            39,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "B",
+          "type": "자동",
+          "numbers": [
+            5,
+            8,
+            9,
+            38,
+            39,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "C",
+          "type": "자동",
+          "numbers": [
+            1,
+            16,
+            33,
+            34,
+            38,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "D",
+          "type": "자동",
+          "numbers": [
+            2,
+            16,
+            17,
+            22,
+            34,
+            39
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "E",
+          "type": "자동",
+          "numbers": [
+            8,
+            25,
+            26,
+            35,
+            36,
+            45
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "ntslOrdrNo": "2026042900567407897",
+      "buyDate": "2026-04-29",
+      "round": 1222,
+      "drawDate": "2026/05/02",
+      "drawed": true,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            9,
+            15,
+            24,
+            26,
+            30,
+            36
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "B",
+          "type": "자동",
+          "numbers": [
+            8,
+            11,
+            13,
+            31,
+            36,
+            38
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "C",
+          "type": "자동",
+          "numbers": [
+            6,
+            10,
+            16,
+            17,
+            35,
+            38
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "D",
+          "type": "자동",
+          "numbers": [
+            6,
+            10,
+            15,
+            16,
+            20,
+            35
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        },
+        {
+          "idx": "E",
+          "type": "자동",
+          "numbers": [
+            14,
+            15,
+            26,
+            41,
+            42,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
     }
   ],
   "reservation": {
@@ -52,7 +329,7 @@
     "endDate": "20260612",
     "favs": []
   },
-  "last_run": "2026-05-12T09:38:23.124Z",
+  "last_run": "2026-05-12T09:58:55.710Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
