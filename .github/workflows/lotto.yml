@@ -38,17 +38,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set Credentials based on Account Mode
-        id: creds
-        run: |
-          if [ "${{ github.event.inputs.account_mode }}" == "acc2" ]; then
-            echo "DHL_ID=${{ secrets.DHLOTTERY_ID_2 }}" >> $GITHUB_ENV
-            echo "DHL_PW=${{ secrets.DHLOTTERY_PASSWORD_2 }}" >> $GITHUB_ENV
-          else
-            echo "DHL_ID=${{ secrets.DHLOTTERY_ID }}" >> $GITHUB_ENV
-            echo "DHL_PW=${{ secrets.DHLOTTERY_PASSWORD }}" >> $GITHUB_ENV
-          fi
-
       - name: Custom purchase workflow
         uses: ./
         env:
@@ -58,8 +47,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
-          dhlottery-id: ${{ env.DHL_ID }}
-          dhlottery-password: ${{ env.DHL_PW }}
+          # 💡 [해결] 여기서 확실하게 스위칭! acc2면 ID_2를, 아니면 기본 ID를 줍니다.
+          dhlottery-id: ${{ github.event.inputs.account_mode == 'acc2' && secrets.DHLOTTERY_ID_2 || secrets.DHLOTTERY_ID }}
+          dhlottery-password: ${{ github.event.inputs.account_mode == 'acc2' && secrets.DHLOTTERY_PASSWORD_2 || secrets.DHLOTTERY_PASSWORD }}
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
 
