@@ -19,6 +19,114 @@
   ],
   "ledger": [
     {
+      "acc": "계정 2",
+      "ntslOrdrNo": "2026051200569864581",
+      "buyDate": "2026-05-12",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "수동",
+          "numbers": [
+            8,
+            24,
+            31,
+            33,
+            38,
+            42
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 2",
+      "ntslOrdrNo": "2026051200569863062",
+      "buyDate": "2026-05-12",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "수동",
+          "numbers": [
+            4,
+            5,
+            26,
+            29,
+            43,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 2",
+      "ntslOrdrNo": "2026051200569861987",
+      "buyDate": "2026-05-12",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "수동",
+          "numbers": [
+            5,
+            9,
+            13,
+            32,
+            40,
+            45
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 2",
+      "ntslOrdrNo": "2026051200569860472",
+      "buyDate": "2026-05-12",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "수동",
+          "numbers": [
+            6,
+            23,
+            30,
+            32,
+            36,
+            40
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
       "acc": "계정 1",
       "ntslOrdrNo": "2026051000569460435",
       "buyDate": "2026-05-10",
@@ -329,7 +437,7 @@
     }
   ],
   "reservation": null,
-  "last_run": "2026-05-12T10:59:41.568Z",
+  "last_run": "2026-05-12T11:00:59.951Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
