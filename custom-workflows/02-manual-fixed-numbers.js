@@ -13,19 +13,14 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [신규] 다음날 자동이체를 받아내기 위한 '5,000원 충전 영수증' 발행 함수
+// 💡 다음날 자동이체를 받아내기 위한 '5,000원 충전 영수증' 발행 함수
 async function autoRechargeOrder(page, accName) {
   try {
     console.log(`[${accName}] 내일자 자동이체 대비 충전 주문(5,000원) 생성 중...`);
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
-    
-    // 케이뱅크 고정 가상계좌 선택
     await page.click('label:has-text("케이뱅크")');
-    // 5,000원 선택
     await page.click('label:has-text("5,000원")'); 
-    // 확인 버튼 클릭 (영수증 발행 완료)
     await page.click('button:has-text("확인")');
-    
     await page.waitForTimeout(2000);
     return true;
   } catch (e) {
@@ -62,19 +57,26 @@ const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
   const accMode = (process.env.INPUT_ACCOUNT_MODE || 'acc1').trim();
-  const accName = accMode === 'acc2' ? '계정 2' : '계정 1';
+  const accName = accMode === 'acc2' ? '계정 2' : (accMode === 'both' ? '부부 모두' : '계정 1');
   let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
 
   let results = { balance1: "--", balance2: "--", history: [], ledger: [], reservation: null, last_run: "" };
   try { if (fs.existsSync('result.json')) results = Object.assign(results, JSON.parse(fs.readFileSync('result.json', 'utf8'))); } catch(e) {}
 
-  // [예약 세팅 및 취소]
+  // 💡 [수정] 예약 세팅: 누가 예약했는지 targetMode로 저장
   if (inputEnv.startsWith("RESERVE_SET|")) {
     const parts = inputEnv.split("|");
-    results.reservation = { isActive: true, type: parts[1], count: parseInt(parts[2]), endDate: parts[3], favs: parts[4] ? parts[4].split(";") : [] };
+    results.reservation = { 
+      isActive: true, 
+      targetMode: accMode, // 'acc1', 'acc2', 'both' 중 하나
+      type: parts[1], 
+      count: parseInt(parts[2]), 
+      endDate: parts[3], 
+      favs: parts[4] ? parts[4].split(";") : [] 
+    };
     results.last_run = new Date().toISOString(); 
     fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-    await sendTelegram(`🗓️ [장기 예약 성공]\n비서가 접수했습니다! 매주 자동 구매를 진행합니다.`);
+    await sendTelegram(`🗓️ [예약 성공]\n- 대상: ${accName}\n- 수량: ${parts[2]}게임\n비서가 접수했습니다!`);
     return { status: "success" };
   }
   
@@ -82,24 +84,39 @@ export default async function(api) {
     results.reservation = null;
     results.last_run = new Date().toISOString(); 
     fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-    await sendTelegram(`🗑️ [장기 예약 취소]\n매주 구매 스케줄이 취소되었습니다.`);
+    await sendTelegram(`🗑️ [예약 취소]\n매주 구매 스케줄이 취소되었습니다.`);
     return { status: "success" };
   }
 
-  // [예약 스케줄 실행 시 번호 생성]
+  // 💡 [수정] 예약 스케줄 실행: 내 차례인지 확인하고 수량 배분
   if (isScheduled) {
     const res = results.reservation;
     if (!res || !res.isActive) return { status: "success" }; 
     const today = toDateStr(new Date());
+    
+    // 만료 처리
     if (today > res.endDate) {
-      if (accMode === 'acc1') {
+      if (res.targetMode === 'both' || res.targetMode === accMode) {
         res.isActive = false; results.last_run = new Date().toISOString();
         fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-        await sendTelegram(`⚠️ [예약 만료]\n기한이 종료되어 오늘부터 자동 구매를 중단합니다.`);
+        await sendTelegram(`⚠️ [예약 만료]\n기한이 종료되어 자동 구매를 중단합니다.`);
       }
       return { status: "success" };
     }
-    let myCount = accMode === 'acc1' ? Math.min(5, res.count) : Math.max(0, res.count - 5);
+
+    // 내 예약이 아니면 조용히 패스 (예: 계정2 예약인데 계정1이 실행 중일 때)
+    if (res.targetMode !== 'both' && res.targetMode !== accMode) {
+      return { status: "success" }; 
+    }
+
+    // 할당량 계산
+    let myCount = 0;
+    if (res.targetMode === 'both') {
+      myCount = accMode === 'acc1' ? Math.min(5, res.count) : Math.max(0, res.count - 5);
+    } else {
+      myCount = res.count; // 단일 계정일 경우 요청 수량 전부 할당
+    }
+
     if (myCount === 0) return { status: "success" };
 
     const generateSemiLocal = (s) => {
@@ -107,6 +124,7 @@ export default async function(api) {
       let pool = Array.from({length:45},(_,i)=>i+1).filter(n => !fixed.includes(n)).sort(()=>Math.random()-0.5).slice(0, 6-fixed.length).sort((a,b)=>a-b);
       return base.map(n => (n !== "" ? n : String(pool.shift()))).join(",");
     };
+    
     let targetGames = [];
     for(let i=0; i<myCount; i++) {
       let seed = (res.type === 'fav' && res.favs.length > 0) ? res.favs[((accMode === 'acc2' ? 5 : 0) + i) % res.favs.length] : "";
@@ -136,25 +154,24 @@ export default async function(api) {
         const validGames = targetNumbersArray.filter(game => game.length === 6);
         purchasedGames = validGames;
         
-        // 프론트에서 100% 번호를 채워서 보내므로 무조건 수동구매(purchaseManual) 로직을 탑니다.
         if (api.purchaseManual && validGames.length > 0) {
           await api.purchaseManual(validGames);
         } else if (validGames.length === 0) {
-          throw new Error("유효한 번호가 전송되지 않았습니다.");
+          throw new Error("유효한 번호가 없습니다.");
         }
         finalMessage = `${validGames.length}게임 구매 성공!`;
       } catch (err) { 
-        finalStatus = "fail"; finalMessage = "구매 에러 (한도/오류)"; 
+        finalStatus = "fail"; finalMessage = "구매 에러 (한도초과 등)"; 
       }
     } else { 
       finalStatus = "fail"; finalMessage = "잔액 부족 (충전 대기중)"; 
     }
   }
 
-  // 💡 [핵심 전략] 구매 후 무조건 다음날을 위한 충전 신청!
+  // 💡 구매 후 무조건 다음날을 위한 충전 신청
   let orderNote = "";
   if (isScheduled && inputEnv !== "SYNC_ONLY") {
-    const orderSuccess = await autoRechargeOrder(page, accName);
+    const orderSuccess = await autoRechargeOrder(page, accName === '부부 모두' ? '계정' : accName);
     if (orderSuccess) orderNote = "\n- [완료] 내일 자동이체용 충전 신청";
   }
 
@@ -167,7 +184,7 @@ export default async function(api) {
 
   if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
 
-  // [당첨 이력 및 장부 수집]
+  // [당첨 이력 수집]
   try {
     const purchaseList = await fetchPurchaseList(page);
     const uniqueOrders = []; const seenOrders = new Set();
@@ -189,7 +206,7 @@ export default async function(api) {
 
   // [히스토리 저장]
   if (inputEnv !== "SYNC_ONLY") {
-    results.history.unshift({ date: new Date().toISOString(), acc: accName, status: finalStatus, message: finalMessage, games: purchasedGames, isScheduled: isScheduled });
+    results.history.unshift({ date: new Date().toISOString(), acc: (accMode === 'both' ? '부부 모두' : accName), status: finalStatus, message: finalMessage, games: purchasedGames, isScheduled: isScheduled });
     if (results.history.length > 30) results.history = results.history.slice(0, 30);
   }
   
@@ -200,18 +217,19 @@ export default async function(api) {
   results.last_run = new Date().toISOString(); 
   fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
 
-  // ── 3. 텔레그램 발송 (당첨 필터링 적용) ─────────────────────────
+  // ── 3. 텔레그램 발송 ─────────────────────────
   let tgMsg = "";
+  const displayAccName = accMode === 'acc2' ? '계정 2' : '계정 1'; // 개별 구매 시의 이름
 
   if (isScheduled) {
-    tgMsg = `🗓️ [${accName} 예약 결과]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+    tgMsg = `🗓️ [${displayAccName} 예약] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
   } else if (inputEnv === "SYNC_ONLY") {
-    tgMsg = `📡 [${accName} 동기화 완료]\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+    tgMsg = `📡 [${displayAccName} 동기화 완료]\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
   } else {
-    tgMsg = `${finalStatus === "success" ? "🎉" : "⚠️"} [${accName} 구매 결과]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+    tgMsg = `${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 구매 결과]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
   }
 
-  // 💡 당첨 결과 보고 필터링 (낙첨은 입 꾹 닫고, 당첨만 요란하게!)
+  // 당첨만 보고하고 낙첨은 숨김
   const winTickets = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0);
   if (winTickets.length > 0) {
     let winMsg = `\n\n🎉 🎉 [축 당첨!] 🎉 🎉`;
@@ -219,13 +237,9 @@ export default async function(api) {
       winMsg += `\n- 제 ${t.round}회: ${t.winTotalAmt.toLocaleString()}원 당첨!`;
     });
     tgMsg += winMsg;
-  } else {
-    console.log("이번 회차는 낙첨입니다. 당첨 보고를 생략합니다.");
   }
 
-  if (tgMsg !== "") {
-    await sendTelegram(tgMsg);
-  }
+  if (tgMsg !== "") await sendTelegram(tgMsg);
 
   return { status: finalStatus, balance: currentBalance };
 }
