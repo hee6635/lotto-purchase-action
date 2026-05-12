@@ -19,6 +19,7 @@
   ],
   "ledger": [
     {
+      "acc": "계정 1",
       "ntslOrdrNo": "2026051000569460435",
       "buyDate": "2026-05-10",
       "round": 1224,
@@ -45,6 +46,7 @@
       "winInfo": null
     },
     {
+      "acc": "계정 1",
       "ntslOrdrNo": "2026051000569458396",
       "buyDate": "2026-05-10",
       "round": 1224,
@@ -71,6 +73,7 @@
       "winInfo": null
     },
     {
+      "acc": "계정 1",
       "ntslOrdrNo": "2026051000569456785",
       "buyDate": "2026-05-10",
       "round": 1224,
@@ -97,6 +100,7 @@
       "winInfo": null
     },
     {
+      "acc": "계정 1",
       "ntslOrdrNo": "2026051000569421342",
       "buyDate": "2026-05-10",
       "round": 1224,
@@ -123,6 +127,7 @@
       "winInfo": null
     },
     {
+      "acc": "계정 1",
       "ntslOrdrNo": "2026051000569384552",
       "buyDate": "2026-05-10",
       "round": 1224,
@@ -232,7 +237,8 @@
           "amt": 0
         }
       ],
-      "winInfo": null
+      "winInfo": null,
+      "acc": "계정 1"
     },
     {
       "ntslOrdrNo": "2026042900567407897",
@@ -318,11 +324,12 @@
           "amt": 0
         }
       ],
-      "winInfo": null
+      "winInfo": null,
+      "acc": "계정 1"
     }
   ],
   "reservation": null,
-  "last_run": "2026-05-12T10:55:05.612Z",
+  "last_run": "2026-05-12T10:59:41.568Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
