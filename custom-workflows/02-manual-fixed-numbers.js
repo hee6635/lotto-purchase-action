@@ -2,20 +2,29 @@ import fs from 'fs';
 
 // ── 1. 헬퍼 함수 ──────────────────────────────────────────
 const toDateStr = (date) => {
-  const y = date.getFullYear(); const m = String(date.getMonth() + 1).padStart(2, '0'); const d = String(date.getDate()).padStart(2, '0');
+  const y = date.getFullYear(); 
+  const m = String(date.getMonth() + 1).padStart(2, '0'); 
+  const d = String(date.getDate()).padStart(2, '0');
   return `${y}${m}${d}`;
 };
 
 const sendTelegram = async (msg) => {
   try {
-    const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim(); const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
-    if (tgToken && tgChatId) await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: tgChatId, text: msg }) });
+    const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim(); 
+    const tgChatId = process.env.TELEGRAM_CHAT_ID?.trim();
+    if (tgToken && tgChatId) {
+      await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ chat_id: tgChatId, text: msg }) 
+      });
+    }
   } catch(e) {}
 };
 
 async function autoRechargeOrder(page, accName) {
   try {
-    console.log(`[${accName}] 내일자 자동이체 대비 충전 주문(5,000원) 생성 중...`);
+    console.log(`[${accName}] 자동이체 대비 충전 주문(5,000원) 생성 중...`);
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
     await page.click('label:has-text("케이뱅크")');
     await page.click('label:has-text("5,000원")'); 
@@ -30,142 +39,188 @@ async function autoRechargeOrder(page, accName) {
 
 const getDateRange = () => {
   const rangeEnv = (process.env.INPUT_DATE_RANGE || '').trim();
-  if (rangeEnv && rangeEnv.includes('_')) { const [start, end] = rangeEnv.split('_'); return { start, end }; }
-  const end = new Date(); const start = new Date(); start.setDate(start.getDate() - 90);
+  if (rangeEnv && rangeEnv.includes('_')) { 
+    const [start, end] = rangeEnv.split('_'); 
+    return { start, end }; 
+  }
+  const end = new Date(); 
+  const start = new Date(); start.setDate(start.getDate() - 90);
   return { start: toDateStr(start), end: toDateStr(end) };
 };
 
 const fetchPurchaseList = async (page) => {
   const { start, end } = getDateRange();
-  try { const res = await page.goto(`https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do?srchStrDt=${start}&srchEndDt=${end}&sort=&ltGdsCd=LO40&winResult=&lramSmam=&pageNum=1&recordCountPerPage=50&_=${Date.now()}`, { waitUntil: 'networkidle', timeout: 15000 }); return JSON.parse(await res.text())?.data?.list ?? []; } catch (e) { return []; }
+  try { 
+    const res = await page.goto(`https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do?srchStrDt=${start}&srchEndDt=${end}&sort=&ltGdsCd=LO40&winResult=&lramSmam=&pageNum=1&recordCountPerPage=50&_=${Date.now()}`, { waitUntil: 'networkidle', timeout: 15000 }); 
+    return JSON.parse(await res.text())?.data?.list ?? []; 
+  } catch (e) { return []; }
 };
 
 const fetchTicketDetail = async (page, ntslOrdrNo, barcd) => {
   const { start, end } = getDateRange();
-  try { const res = await page.goto(`https://www.dhlottery.co.kr/mypage/lotto645TicketDetail.do?ntslOrdrNo=${ntslOrdrNo}&srchStrDt=${start}&srchEndDt=${end}&barcd=${barcd}&_=${Date.now()}`, { waitUntil: 'networkidle', timeout: 15000 }); const json = JSON.parse(await res.text()); return json?.data?.success ? json.data.ticket : null; } catch (e) { return null; }
+  try { 
+    const res = await page.goto(`https://www.dhlottery.co.kr/mypage/lotto645TicketDetail.do?ntslOrdrNo=${ntslOrdrNo}&srchStrDt=${start}&srchEndDt=${end}&barcd=${barcd}&_=${Date.now()}`, { waitUntil: 'networkidle', timeout: 15000 }); 
+    const json = JSON.parse(await res.text()); 
+    return json?.data?.success ? json.data.ticket : null; 
+  } catch (e) { return null; }
 };
 
 const fetchWinNumbers = async (page, round) => {
-  try { const res = await page.goto(`https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${round}`, { waitUntil: 'networkidle', timeout: 10000 }); const json = JSON.parse(await res.text()); return json.returnValue === 'success' ? { round: json.drwNo, date: json.drwNoDate, numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6], bonus: json.bnusNo, prize1: json.firstWinamnt, prize1Cnt: json.firstPrzwnerCo } : null; } catch (e) { return null; }
+  try { 
+    const res = await page.goto(`https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${round}`, { waitUntil: 'networkidle', timeout: 10000 }); 
+    const json = JSON.parse(await res.text()); 
+    return json.returnValue === 'success' ? { 
+      round: json.drwNo, 
+      date: json.drwNoDate, 
+      numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6], 
+      bonus: json.bnusNo, 
+      prize1: json.firstWinamnt, 
+      prize1Cnt: json.firstPrzwnerCo 
+    } : null; 
+  } catch (e) { return null; }
 };
 
-const calcRank = (myNums, winNums, bonusNum) => { const match = myNums.filter(n => winNums.includes(n)).length; const hasBonus = myNums.includes(bonusNum); if (match === 6) return 1; if (match === 5 && hasBonus) return 2; if (match === 5) return 3; if (match === 4) return 4; if (match === 3) return 5; return 0; };
+const calcRank = (myNums, winNums, bonusNum) => { 
+  const match = myNums.filter(n => winNums.includes(n)).length; 
+  const hasBonus = myNums.includes(bonusNum); 
+  if (match === 6) return 1; 
+  if (match === 5 && hasBonus) return 2; 
+  if (match === 5) return 3; 
+  if (match === 4) return 4; 
+  if (match === 3) return 5; 
+  return 0; 
+};
 const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5등', 0:'낙첨' };
 
 // ── 2. 메인 로직 ───────────────────────────────────────────
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
+  // yml 스케줄을 통해 들어오는 명령 (PURCHASE_AUTO, CHECK_BALANCE, CHECK_WIN)
+  const scheduleCommand = (process.env.INPUT_COMMAND || 'PURCHASE_AUTO').trim();
+  // 앱(UI)에서 넘겨주는 데이터 (RESERVE_SET, SYNC_ONLY, 즉시구매 번호)
+  const inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
+  
   const accMode = (process.env.INPUT_ACCOUNT_MODE || 'acc1').trim();
   const displayAccName = accMode === 'acc2' ? '계정 2' : '계정 1'; 
-  const accName = accMode === 'both' ? '부부 모두' : displayAccName; 
-  let inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
 
   let results = { balance1: "--", balance2: "--", history: [], ledger: [], reservation: null, last_run: "" };
-  try { if (fs.existsSync('result.json')) results = Object.assign(results, JSON.parse(fs.readFileSync('result.json', 'utf8'))); } catch(e) {}
+  try { 
+    if (fs.existsSync('result.json')) results = Object.assign(results, JSON.parse(fs.readFileSync('result.json', 'utf8'))); 
+  } catch(e) {}
 
-  if (inputEnv.startsWith("RESERVE_SET|")) {
-    const parts = inputEnv.split("|");
-    results.reservation = { 
-      isActive: true, 
-      targetMode: accMode, 
-      type: parts[1], 
-      count: parseInt(parts[2]), 
-      endDate: parts[3], 
-      favs: parts[4] ? parts[4].split(";") : [] 
-    };
-    results.last_run = new Date().toISOString(); 
-    fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-    await sendTelegram(`🗓️ [예약 성공]\n- 대상: ${accName}\n- 수량: ${parts[2]}게임\n비서가 접수했습니다!`);
-    return { status: "success" };
-  }
-  
-  if (inputEnv === "RESERVE_CANCEL") {
-    results.reservation = null;
-    results.last_run = new Date().toISOString(); 
-    fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-    await sendTelegram(`🗑️ [예약 취소]\n매주 구매 스케줄이 취소되었습니다.`);
-    return { status: "success" };
-  }
-
-  if (isScheduled) {
-    const res = results.reservation;
-    if (!res || !res.isActive) return { status: "success" }; 
-    const today = toDateStr(new Date());
-    
-    if (today > res.endDate) {
-      if (res.targetMode === 'both' || res.targetMode === accMode) {
-        res.isActive = false; results.last_run = new Date().toISOString();
-        fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-        await sendTelegram(`⚠️ [예약 만료]\n기한이 종료되어 자동 구매를 중단합니다.`);
-      }
+  // ── [A] 앱(UI) 명령어 처리 (예약 설정/취소) ──
+  if (inputEnv && inputEnv !== "SYNC_ONLY" && !inputEnv.includes("_")) {
+    if (inputEnv.startsWith("RESERVE_SET|")) {
+      const parts = inputEnv.split("|");
+      results.reservation = { isActive: true, targetMode: accMode, type: parts[1], count: parseInt(parts[2]), endDate: parts[3], favs: parts[4] ? parts[4].split(";") : [] };
+      results.last_run = new Date().toISOString(); 
+      fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
+      await sendTelegram(`🗓️ [예약 성공]\n- 대상: ${accMode === 'both' ? '계정 모두' : displayAccName}\n- 수량: ${parts[2]}게임\n비서가 접수했습니다!`);
       return { status: "success" };
     }
-
-    if (res.targetMode !== 'both' && res.targetMode !== accMode) {
-      return { status: "success" }; 
+    if (inputEnv === "RESERVE_CANCEL") {
+      results.reservation = null;
+      results.last_run = new Date().toISOString(); 
+      fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
+      await sendTelegram(`🗑️ [예약 취소]\n매주 구매 스케줄이 취소되었습니다.`);
+      return { status: "success" };
     }
-
-    let myCount = 0;
-    if (res.targetMode === 'both') {
-      myCount = accMode === 'acc1' ? Math.min(5, res.count) : Math.max(0, res.count - 5);
-    } else {
-      myCount = res.count; 
-    }
-
-    if (myCount === 0) return { status: "success" };
-
-    const generateSemiLocal = (s) => {
-      const base = s ? s.split(",") : ["","","","","",""]; const fixed = base.map(n => parseInt(n)).filter(n => !isNaN(n));
-      let pool = Array.from({length:45},(_,i)=>i+1).filter(n => !fixed.includes(n)).sort(()=>Math.random()-0.5).slice(0, 6-fixed.length).sort((a,b)=>a-b);
-      return base.map(n => (n !== "" ? n : String(pool.shift()))).join(",");
-    };
-    
-    let targetGames = [];
-    for(let i=0; i<myCount; i++) {
-      let seed = (res.type === 'fav' && res.favs.length > 0) ? res.favs[((accMode === 'acc2' ? 5 : 0) + i) % res.favs.length] : "";
-      targetGames.push(generateSemiLocal(seed));
-    }
-    inputEnv = targetGames.join("_");
   }
 
+  // ── 브라우저 세팅 ──
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
-  let currentBalance = "0"; let finalStatus = "success"; let finalMessage = "작업 완료"; let purchasedGames = []; let ledgerData = [];
-
+  let currentBalance = "0"; 
   try {
     await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
     const res = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 30000 });
     const json = JSON.parse(await res.text());
     if (json?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(json.data.userMndp.crntEntrsAmt);
-  } catch (e) { finalStatus = "fail"; finalMessage = "잔액 조회 실패"; }
+  } catch (e) { 
+    return { status: "fail", message: "잔액 조회 실패" }; 
+  }
+  
+  if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
 
-  if (finalStatus === "success" && inputEnv !== "SYNC_ONLY") {
+  // ── [B] 스케줄: 잔액 파수꾼 (월요일 19:00) ──
+  if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
+    console.log(`[${displayAccName}] 🌃 저녁 잔액 파수꾼 점검`);
+    if (parseInt(currentBalance) < 5000) {
+      await sendTelegram(`🚨 [${displayAccName} 잔액 경고]\n오늘 아침 자동이체가 실패한 것 같습니다!\n현재 잔액: ${Number(currentBalance).toLocaleString()}원 (확인 필요)`);
+    }
+    results.last_run = new Date().toISOString();
+    fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
+    return { status: "success", balance: currentBalance };
+  }
+
+  // ── [C] 스케줄/수동 구매 준비 로직 ──
+  let isBuyAction = false;
+  let targetGamesStr = "";
+  let finalStatus = "success"; 
+  let finalMessage = "작업 완료"; 
+  let purchasedGames = []; 
+
+  if (inputEnv === "SYNC_ONLY" || (isScheduled && scheduleCommand === 'CHECK_WIN')) {
+    isBuyAction = false;
+  } else {
+    isBuyAction = true;
+    if (isScheduled && scheduleCommand === 'PURCHASE_AUTO') {
+      const res = results.reservation;
+      if (!res || !res.isActive) return { status: "success" }; 
+      
+      const today = toDateStr(new Date());
+      if (today > res.endDate) {
+        if (res.targetMode === 'both' || res.targetMode === accMode) {
+          res.isActive = false; results.last_run = new Date().toISOString(); fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
+          await sendTelegram(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
+        }
+        return { status: "success" };
+      }
+      if (res.targetMode !== 'both' && res.targetMode !== accMode) return { status: "success" }; 
+      
+      let myCount = res.targetMode === 'both' ? (accMode === 'acc1' ? Math.min(5, res.count) : Math.max(0, res.count - 5)) : res.count;
+      if (myCount === 0) return { status: "success" };
+
+      const generateSemiLocal = (s) => {
+        const base = s ? s.split(",") : ["","","","","",""]; const fixed = base.map(n => parseInt(n)).filter(n => !isNaN(n));
+        let pool = Array.from({length:45},(_,i)=>i+1).filter(n => !fixed.includes(n)).sort(()=>Math.random()-0.5).slice(0, 6-fixed.length).sort((a,b)=>a-b);
+        return base.map(n => (n !== "" ? n : String(pool.shift()))).join(",");
+      };
+      
+      let tGames = [];
+      for(let i=0; i<myCount; i++) {
+        let seed = (res.type === 'fav' && res.favs.length > 0) ? res.favs[((accMode === 'acc2' ? 5 : 0) + i) % res.favs.length] : "";
+        tGames.push(generateSemiLocal(seed));
+      }
+      targetGamesStr = tGames.join("_");
+    } else {
+      // 앱에서 넘어온 즉시 구매 번호
+      targetGamesStr = inputEnv;
+    }
+  }
+
+  // ── [D] 실제 구매 실행 ──
+  let orderNote = "";
+  if (isBuyAction && targetGamesStr) {
     if (parseInt(currentBalance) >= 1000) {
       try {
-        let targetNumbersArray = inputEnv.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n)));
+        let targetNumbersArray = targetGamesStr.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n)));
         let validGames = targetNumbersArray.filter(game => game.length === 6);
         
-        // 💡 [핵심 추가] 내 잔고에 맞춰서 알아서 게임 수를 자른다!
+        // 잔고 한도에 맞춰서 영리하게 구매 게임 수 제한
         const maxAffordable = Math.floor(parseInt(currentBalance) / 1000);
         let skippedCount = 0;
-        
-        // 돈이 부족하면 살 수 있는 만큼만 남기고 자름
         if (validGames.length > maxAffordable) {
             skippedCount = validGames.length - maxAffordable;
             validGames = validGames.slice(0, maxAffordable);
         }
-
         purchasedGames = validGames;
         
         if (api.purchaseManual && validGames.length > 0) {
           await api.purchaseManual(validGames);
           finalMessage = `${validGames.length}게임 구매 성공!`;
-          
-          // 잘라낸 수량이 있으면 텔레그램 메시지에 티를 낸다
-          if (skippedCount > 0) {
-              finalMessage += ` (예치금 부족으로 ${skippedCount}게임 제외됨)`;
-          }
+          if (skippedCount > 0) finalMessage += ` (예치금 부족으로 ${skippedCount}게임 제외됨)`;
         } else if (validGames.length === 0) {
           throw new Error("유효한 번호가 없습니다.");
         }
@@ -175,27 +230,32 @@ export default async function(api) {
     } else { 
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
+
+    // 구매 완료 후, 스케줄 구매(월요일 아침)인 경우 즉시 충전 예약(번호표 발급) 실행
+    if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
+      const orderSuccess = await autoRechargeOrder(page, displayAccName);
+      if (orderSuccess) orderNote = "\n- [완료] 오늘 자동이체용 충전 신청 (5,000원)";
+    }
+
+    // 구매 완료 직후 잔액 다시 갱신
+    try {
+      const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 15000 });
+      const reJson = JSON.parse(await reRes.text());
+      if (reJson?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(reJson.data.userMndp.crntEntrsAmt);
+      if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
+    } catch (e) {}
+
+    results.history.unshift({ date: new Date().toISOString(), acc: displayAccName, status: finalStatus, message: finalMessage, games: purchasedGames, isScheduled: isScheduled });
+    if (results.history.length > 30) results.history = results.history.slice(0, 30);
   }
 
-  let orderNote = "";
-  if (isScheduled && inputEnv !== "SYNC_ONLY") {
-    const orderSuccess = await autoRechargeOrder(page, displayAccName);
-    if (orderSuccess) orderNote = "\n- [완료] 내일 자동이체용 충전 신청";
-  }
-
-  try {
-    const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 15000 });
-    const reJson = JSON.parse(await reRes.text());
-    if (reJson?.data?.userMndp?.crntEntrsAmt !== undefined) currentBalance = String(reJson.data.userMndp.crntEntrsAmt);
-  } catch (e) {}
-
-  if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
-
-  // [당첨 이력 수집]
+  // ── [E] 공통: 장부 동기화 (당첨 확인 포함) ──
+  let ledgerData = [];
   try {
     const purchaseList = await fetchPurchaseList(page);
     const uniqueOrders = []; const seenOrders = new Set();
     for (const item of purchaseList) { if (!seenOrders.has(item.ntslOrdrNo)) { seenOrders.add(item.ntslOrdrNo); uniqueOrders.push(item); } }
+    
     for (const order of uniqueOrders) {
       const cached = results.ledger.find(t => t.ntslOrdrNo === order.ntslOrdrNo);
       if (cached && cached.drawed) { 
@@ -205,7 +265,10 @@ export default async function(api) {
       }
       const ticket = await fetchTicketDetail(page, order.ntslOrdrNo, order.gmInfo);
       if (!ticket) continue;
-      let winInfo = null; if (ticket.drawed) winInfo = await fetchWinNumbers(page, ticket.game_round);
+      
+      let winInfo = null; 
+      if (ticket.drawed) winInfo = await fetchWinNumbers(page, ticket.game_round);
+      
       const games = ticket.game_dtl.map(g => {
         let rank = g.rank; let rankLabel = '미추첨';
         if (ticket.drawed && winInfo) { rank = calcRank(g.num, winInfo.numbers, winInfo.bonus); rankLabel = RANK_LABEL[rank]; }
@@ -214,11 +277,6 @@ export default async function(api) {
       ledgerData.push({ acc: displayAccName, ntslOrdrNo: order.ntslOrdrNo, buyDate: order.eltOrdrDt, round: ticket.game_round, drawDate: ticket.draw_date, drawed: ticket.drawed, winTotalAmt: ticket.win_total_amt, games: games, winInfo: winInfo });
     }
   } catch (e) {}
-
-  if (inputEnv !== "SYNC_ONLY") {
-    results.history.unshift({ date: new Date().toISOString(), acc: displayAccName, status: finalStatus, message: finalMessage, games: purchasedGames, isScheduled: isScheduled });
-    if (results.history.length > 30) results.history = results.history.slice(0, 30);
-  }
   
   const newOrderNos = new Set(ledgerData.map(t => t.ntslOrdrNo));
   const oldOnlyCache = results.ledger.filter(t => !newOrderNos.has(t.ntslOrdrNo));
@@ -227,25 +285,31 @@ export default async function(api) {
   results.last_run = new Date().toISOString(); 
   fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
 
-  let tgMsg = "";
-  if (isScheduled) {
-    tgMsg = `🗓️ [${displayAccName} 예약] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
-  } else if (inputEnv === "SYNC_ONLY") {
-    tgMsg = `📡 [${displayAccName} 동기화 완료]\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
-  } else {
-    tgMsg = `${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 구매 결과]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`;
+  // ── [F] 텔레그램 메시지 발송 ──
+  
+  // 1. 토요일 스케줄: 당일 당첨 번개 보고
+  if (isScheduled && scheduleCommand === 'CHECK_WIN') {
+    const todayStr = toDateStr(new Date());
+    const todayWins = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0 && t.acc === displayAccName && (t.drawDate.replace(/-/g, '') === todayStr || t.drawDate === todayStr));
+
+    if (todayWins.length > 0) {
+      let winMsg = `🎊 [${displayAccName} 축 당첨!!] 🎊`;
+      todayWins.forEach(t => {
+        winMsg += `\n제 ${t.round}회: ${t.winTotalAmt.toLocaleString()}원 당첨!`;
+      });
+      await sendTelegram(winMsg);
+    }
+    return { status: "success", balance: currentBalance };
   }
 
-  const winTickets = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0 && t.acc === displayAccName);
-  if (winTickets.length > 0) {
-    let winMsg = `\n\n🎉 🎉 [축 당첨!] 🎉 🎉`;
-    winTickets.forEach(t => {
-      winMsg += `\n- 제 ${t.round}회: ${t.winTotalAmt.toLocaleString()}원 당첨!`;
-    });
-    tgMsg += winMsg;
+  // 2. 구매 완료 보고 (수동 & 월요일 자동)
+  if (isBuyAction) {
+    if (isScheduled) {
+      await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
+    } else {
+      await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
+    }
   }
-
-  if (tgMsg !== "") await sendTelegram(tgMsg);
 
   return { status: finalStatus, balance: currentBalance };
 }
