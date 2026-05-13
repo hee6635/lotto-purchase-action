@@ -184,6 +184,33 @@
   "ledger": [
     {
       "acc": "계정 2",
+      "ntslOrdrNo": "2026051200569935242",
+      "buyDate": "2026-05-12",
+      "round": 1224,
+      "drawDate": "2026/05/16",
+      "drawed": false,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "수동",
+          "numbers": [
+            7,
+            9,
+            26,
+            29,
+            32,
+            37
+          ],
+          "rank": 0,
+          "rankLabel": "미추첨",
+          "amt": 0
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 2",
       "ntslOrdrNo": "2026051200569864581",
       "buyDate": "2026-05-12",
       "round": 1224,
@@ -608,7 +635,7 @@
     "endDate": "20261112",
     "favs": []
   },
-  "last_run": "2026-05-12T15:33:40.936Z",
+  "last_run": "2026-05-13T08:17:06.602Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
