@@ -22,6 +22,7 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
+// 💡 [초고속 직진 로직] 쓸데없는 은행 선택을 빼고, 금액선택 -> 충전하기만 누릅니다!
 async function autoRechargeOrder(page, accName) {
   let popupLogs = [];
   try {
@@ -34,55 +35,52 @@ async function autoRechargeOrder(page, accName) {
       try { await dialog.accept(); } catch(e) {} 
     });
 
-    // 충전 페이지로 이동
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000); 
 
-    // 💡 [CCTV 가동] 로봇이 현재 보고 있는 화면 상태를 깃허브 로그에 낱낱이 출력합니다!
+    // 🕵️‍♂️ (만약을 위한 CCTV 가동 유지)
     console.log("=== 🕵️‍♂️ 로봇 시야 CCTV 가동 ===");
-    console.log("1. 현재 머물고 있는 URL:", page.url());
-    console.log("2. 페이지 제목:", await page.title());
-    console.log("3. 발견된 총 프레임(창) 개수:", page.frames().length);
-    for(let i = 0; i < page.frames().length; i++) {
-        console.log(` - 프레임 [${i}] 주소:`, page.frames()[i].url());
-    }
-    
+    console.log("1. URL:", page.url());
     try {
         const bodyHTML = await page.innerHTML('body');
-        console.log("4. 화면 HTML 글자 미리보기(앞부분 1000자):\n", bodyHTML.replace(/\s+/g, ' ').substring(0, 1000));
-    } catch(e) {
-        console.log("HTML 읽기 실패:", e.message);
-    }
+        console.log("2. HTML 미리보기:\n", bodyHTML.replace(/\s+/g, ' ').substring(0, 800));
+    } catch(e) {}
     console.log("===============================");
 
     let injectResult = [];
     
+    // 숨겨진 iframe 뚫고 직진!
     for (const frame of page.frames()) {
       const res = await frame.evaluate(() => {
           let logs = [];
           try {
-              const kbankRadio = document.querySelector('input[value="03"]') || document.querySelector('#rechargeWayClsfCd2');
-              if (kbankRadio) { 
-                  kbankRadio.click(); logs.push("케이뱅크 관통"); 
+              // 1. 금액(5,000원) 다이렉트 선택
+              let selectBox = null;
+              document.querySelectorAll('select').forEach(sel => {
+                  if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
+              });
+              
+              let amtSet = false;
+              if (selectBox) {
+                  selectBox.value = '5000';
+                  selectBox.dispatchEvent(new Event('change', { bubbles: true }));
+                  logs.push("금액탭 5천원 선택");
+                  amtSet = true;
+              } else {
+                  const amtRadio = document.querySelector('input[value="5000"]');
+                  if (amtRadio) { amtRadio.click(); logs.push("금액버튼 5천원 클릭"); amtSet = true; }
+              }
 
-                  let selectBox = null;
-                  document.querySelectorAll('select').forEach(sel => {
-                      if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
-                  });
-                  
-                  if (selectBox) {
-                      selectBox.value = '5000';
-                      selectBox.dispatchEvent(new Event('change', { bubbles: true }));
-                      logs.push("목록 5천원 세팅");
-                  } else {
-                      const amtRadio = document.querySelector('input[value="5000"]');
-                      if (amtRadio) { amtRadio.click(); logs.push("버튼 5천원 세팅"); }
-                  }
-
-                  const submitBtn = document.querySelector('.btn_common.mid.blu') || document.querySelector('#btnSubmit');
+              // 2. 금액 세팅이 성공했다면 0.5초 뒤 '충전하기' 클릭
+              if (amtSet) {
+                  const submitBtn = document.querySelector('.btn_common.mid.blu') || 
+                                    document.querySelector('#btnSubmit') ||
+                                    Array.from(document.querySelectorAll('a, button')).find(el => el.textContent.includes('충전하기') || el.textContent.includes('확인'));
                   if (submitBtn) {
                       setTimeout(() => submitBtn.click(), 500);
-                      logs.push("최종 결제버튼 클릭");
+                      logs.push("충전하기 버튼 클릭 완료");
+                  } else {
+                      logs.push("충전하기 버튼을 못 찾음");
                   }
               }
           } catch(err) {
@@ -101,7 +99,7 @@ async function autoRechargeOrder(page, accName) {
     
     await page.waitForTimeout(5000);
 
-    let accountInfo = "추출 실패 (수동 확인 필요)";
+    let accountInfo = "추출 실패";
     for (const frame of page.frames()) {
         try {
             const bodyText = await frame.innerText('body');
@@ -114,7 +112,7 @@ async function autoRechargeOrder(page, accName) {
     }
 
     const finalLogs = popupLogs.length > 0 ? popupLogs : injectResult;
-    return { success: injectResult.length > 0, account: accountInfo, logs: finalLogs };
+    return { success: injectResult.includes("충전하기 버튼 클릭 완료") || popupLogs.length > 0, account: accountInfo, logs: finalLogs };
   } catch (e) {
     console.error("충전 프로세스 에러:", e);
     return { success: false, account: "", logs: popupLogs };
@@ -196,7 +194,7 @@ export default async function(api) {
     const logStr = orderRes.logs.length > 0 ? orderRes.logs.join(" ➡️ ") : "기록 없음";
     
     if (orderRes.success) {
-      await sendTelegram(`⚡ [${displayAccName} 충전 예약 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 진행로그: [ ${logStr} ]\n위 가상계좌로 자동이체를 걸어두시면 완벽합니다!`);
+      await sendTelegram(`⚡ [${displayAccName} 충전 예약 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 진행로그: [ ${logStr} ]\n위 계좌로 자동이체를 걸어두시면 완벽합니다!`);
     } else {
       await sendTelegram(`❌ [${displayAccName} 충전 예약 실패]\n- 진행로그: [ ${logStr} ]\n* 깃허브 로그의 CCTV 내용을 확인해주세요!`);
     }
