@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 💡 명령어 분배기: 수동/스케줄에 따라 봇에게 정확한 명령 하달
+      # 💡 명령어 분배기: 시간대에 따라 봇에게 정확한 임무 부여
       - name: 스케줄에 따른 명령어 세팅
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -87,7 +87,7 @@ jobs:
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
 
-      # ─── [3] 안전한 결과 장부 저장 ───
+      # ─── [3] 결과 저장 ───
       - name: Save Result
         if: always()
         run: |
