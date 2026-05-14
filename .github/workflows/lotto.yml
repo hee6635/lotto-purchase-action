@@ -2,8 +2,8 @@ name: 로또 마스터 시스템 (오전충전/오후구매 & 토요당첨알림
 
 on:
   schedule:
-    - cron: '0 22 * * 0'  # [1차] 월요일 오전 07:00 KST (가상계좌 충전 신청)
-    - cron: '0 9 * * 1'   # [2차] 월요일 오후 18:00 KST (실제 로또 구매)
+    - cron: '0 22 * * 0'  # [1차] 월요일 오전 07:00 KST (충전 신청)
+    - cron: '0 9 * * 1'   # [2차] 월요일 오후 18:00 KST (실제 구매)
     - cron: '15 12 * * 6' # [3차] 토요일 오후 21:15 KST (당첨 번개 보고)
   workflow_dispatch:
     inputs:
@@ -34,6 +34,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 💡 기술자님의 아이디어를 적용한 '명령어 분배기' (직관적이고 깔끔합니다!)
+      - name: 스케줄에 따른 명령어 세팅
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "COMMAND=PURCHASE_AUTO" >> $GITHUB_ENV
+          elif [[ "${{ github.event.schedule }}" == "0 22 * * 0" ]]; then
+            echo "COMMAND=RECHARGE_ONLY" >> $GITHUB_ENV
+          elif [[ "${{ github.event.schedule }}" == "0 9 * * 1" ]]; then
+            echo "COMMAND=PURCHASE_AUTO" >> $GITHUB_ENV
+          elif [[ "${{ github.event.schedule }}" == "15 12 * * 6" ]]; then
+            echo "COMMAND=CHECK_WIN" >> $GITHUB_ENV
+          fi
+
       # ─── [1] 계정 1 실행 단계 ───
       - name: Run Bot (Acc 1)
         if: |
@@ -44,8 +57,7 @@ jobs:
           INPUT_ACCOUNT_MODE: 'acc1'
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
           INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
-          # 💡 시간에 맞춰 로봇에게 내리는 명령어가 달라집니다!
-          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'RECHARGE_ONLY' || (github.event.schedule == '0 9 * * 1' && 'PURCHASE_AUTO' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
+          INPUT_COMMAND: ${{ env.COMMAND }} # 분배기에서 정해준 명령어를 그대로 사용!
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
@@ -64,7 +76,7 @@ jobs:
           INPUT_ACCOUNT_MODE: 'acc2'
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
           INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
-          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'RECHARGE_ONLY' || (github.event.schedule == '0 9 * * 1' && 'PURCHASE_AUTO' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
+          INPUT_COMMAND: ${{ env.COMMAND }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
