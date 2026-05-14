@@ -1,9 +1,9 @@
-name: 로또 마스터 시스템 (월요구매 & 토요당첨알림)
+name: 로또 마스터 시스템 (오전충전/오후구매 & 토요당첨알림)
 
 on:
   schedule:
-    - cron: '0 22 * * 0' # [1차] 월요일 오전 07:00 KST (구매 및 충전예약)
-    - cron: '0 10 * * 1' # [2차] 월요일 오후 19:00 KST (잔액 파수꾼)
+    - cron: '0 22 * * 0'  # [1차] 월요일 오전 07:00 KST (가상계좌 충전 신청)
+    - cron: '0 9 * * 1'   # [2차] 월요일 오후 18:00 KST (실제 로또 구매)
     - cron: '15 12 * * 6' # [3차] 토요일 오후 21:15 KST (당첨 번개 보고)
   workflow_dispatch:
     inputs:
@@ -44,8 +44,8 @@ jobs:
           INPUT_ACCOUNT_MODE: 'acc1'
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
           INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
-          # 스케줄 실행일 때는 시간에 따라 명령을 매핑하고, 앱에서 수동으로 올 때는 기본 구매 모드로 처리합니다.
-          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'PURCHASE_AUTO' || (github.event.schedule == '0 10 * * 1' && 'CHECK_BALANCE' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
+          # 💡 시간에 맞춰 로봇에게 내리는 명령어가 달라집니다!
+          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'RECHARGE_ONLY' || (github.event.schedule == '0 9 * * 1' && 'PURCHASE_AUTO' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
@@ -64,7 +64,7 @@ jobs:
           INPUT_ACCOUNT_MODE: 'acc2'
           INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
           INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
-          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'PURCHASE_AUTO' || (github.event.schedule == '0 10 * * 1' && 'CHECK_BALANCE' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
+          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'RECHARGE_ONLY' || (github.event.schedule == '0 9 * * 1' && 'PURCHASE_AUTO' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
