@@ -1,6 +1,20 @@
 import fs from 'fs';
 
-// ── 1. 헬퍼 함수 ──────────────────────────
+// ── 1. 계정별 고정 정보 설정 ──────────
+const ACCOUNT_CONFIG = {
+  acc1: {
+    userId: "hee6635",
+    vbankNum: "70103031239271",
+    userName: "이희정"
+  },
+  acc2: {
+    userId: "ic4000", 
+    vbankNum: "70190086690895", // 하이픈 제거 완료
+    userName: "오현지"
+  }
+};
+
+// ── 2. 헬퍼 함수 ──────────────────────────
 const toDateStr = (date) => {
   const y = date.getFullYear(); 
   const m = String(date.getMonth() + 1).padStart(2, '0'); 
@@ -22,31 +36,39 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [궁극의 네트워크 엔진] 성공 암호를 정확히 읽어냅니다.
-async function autoRechargeOrder(page, accName) {
+// 💡 [듀얼 네트워크 엔진] 현재 구동 중인 계정에 맞춰 다이렉트 충전 패킷 전송
+async function autoRechargeOrder(page, accMode) {
   try {
-    console.log(`[${accName}] 예치금 충전 시퀀스 시작 (Network Direct Mode)`);
+    const config = ACCOUNT_CONFIG[accMode];
+    console.log(`[${accMode}] 충전 시퀀스 시작 (사용자: ${config.userName})`);
     
-    const result = await page.evaluate(async () => {
+    // CCTV 가동
+    console.log("=== 🕵️‍♂️ 로봇 시야 CCTV 가동 ===");
+    console.log("현재 접속 계정:", accMode);
+    console.log("현재 접속 ID:", config.userId);
+    console.log("현재 URL:", page.url());
+    console.log("===============================");
+
+    const result = await page.evaluate(async (cfg) => {
       const now = new Date();
       const moid = now.toISOString().replace(/[-:T]/g, '').slice(0, 14) + Math.floor(Math.random() * 1000000).toString().padStart(7, '0');
       const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
       const expDate = tomorrow.toISOString().replace(/[-:T]/g, '').slice(0, 8);
       
-      const url = `https://www.dhlottery.co.kr/mypage/kbankProcess.do?PayMethod=VBANK&GoodsName=%EB%B3%B5%EA%B6%8C%EC%98%88%EC%B9%98%EA%B8%88&Moid=${moid}&UserIP=127.0.0.1&MallUserID=hee6635&VbankExpDate=${expDate}&Amt=5000&VbankBankCode=089&VbankNum=70103031239271&FxVrAccountNo=70103031239271&VBankAccountName=%EB%8F%99%ED%96%89%EB%B3%B5%EA%B6%8C_%EC%9D%B4%ED%9D%AC%EC%A0%95&_=${Date.now()}`;
+      const url = `https://www.dhlottery.co.kr/mypage/kbankProcess.do?PayMethod=VBANK&GoodsName=%EB%B3%B5%EA%B6%8C%EC%98%88%EC%B9%98%EA%B8%88&Moid=${moid}&UserIP=127.0.0.1&MallUserID=${cfg.userId}&VbankExpDate=${expDate}&Amt=5000&VbankBankCode=089&VbankNum=${cfg.vbankNum}&FxVrAccountNo=${cfg.vbankNum}&VBankAccountName=%EB%8F%99%ED%96%89%EB%B3%B5%EA%B6%8C_${encodeURIComponent(cfg.userName)}&_=${Date.now()}`;
       
       const response = await fetch(url, { headers: { 'ajax': 'true' } });
       return await response.json();
-    });
+    }, config);
 
     console.log(`서버 응답 결과: ${JSON.stringify(result)}`);
 
-    // 💡 동행복권의 성공 코드(4120)를 인식하여 텔레그램으로 전송
     const resVO = result?.data?.resVO;
+    // 동행복권 정상 승인 코드 4120 확인
     if (resVO && (resVO.resultCode === "4120" || resVO.vbankNum)) {
       return { success: true, account: resVO.vbankNum, msg: resVO.resultMsg };
     } else {
-      return { success: false, error: "서버가 올바른 계좌 정보를 반환하지 않음" };
+      return { success: false, error: "서버가 올바른 정보를 반환하지 않음" };
     }
   } catch (e) {
     console.error("충전 프로세스 에러:", e);
@@ -54,7 +76,7 @@ async function autoRechargeOrder(page, accName) {
   }
 }
 
-// ── 2. 데이터 관리 및 당첨 확인 관련 함수 ─────────────────────────────
+// ── 3. 데이터 관리 및 당첨 확인 관련 함수 ─────────────────────────────
 const getDateRange = () => {
   const rangeEnv = (process.env.INPUT_DATE_RANGE || '').trim();
   if (rangeEnv && rangeEnv.includes('_')) { 
@@ -110,7 +132,7 @@ const calcRank = (myNums, winNums, bonusNum) => {
 };
 const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5등', 0:'낙첨' };
 
-// ── 3. 메인 엔진 ──────────────────────────────────────────────
+// ── 4. 메인 엔진 ──────────────────────────────────────────────
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
   const scheduleCommand = (process.env.INPUT_COMMAND || 'PURCHASE_AUTO').trim();
@@ -124,11 +146,11 @@ export default async function(api) {
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
-  // ── [A] 특수 모드: RECHARGE_TEST (네트워크 직통 테스트) ──
+  // ── [A] 특수 모드: RECHARGE_TEST ──
   if (inputEnv === "RECHARGE_TEST") {
-    const orderRes = await autoRechargeOrder(page, displayAccName);
+    const orderRes = await autoRechargeOrder(page, accMode);
     if (orderRes.success) {
-      await sendTelegram(`⚡ [${displayAccName} 충전 신청 대성공!]\n- 대상계좌: 케이뱅크 ${orderRes.account}\n동행복권 서버가 5,000원 입금 대기를 승인했습니다. 이제 마음 편히 이체하세요!`);
+      await sendTelegram(`⚡ [${displayAccName} 충전 신청 성공]\n- 대상계좌: 케이뱅크 ${orderRes.account}\n본인 명의의 올바른 계좌로 신청되었습니다! 이체 세팅을 유지해주세요.`);
     } else {
       await sendTelegram(`❌ [${displayAccName} 충전 신청 실패]\n- 원인: ${orderRes.error}`);
     }
@@ -162,15 +184,15 @@ export default async function(api) {
   } catch (e) {}
   if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
 
-  // ── [D] 스케줄: 잔액 파수꾼 (월요일 저녁) ──
+  // ── [D] 스케줄: 잔액 파수꾼 ──
   if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
     if (parseInt(currentBalance) < 5000) {
-      await sendTelegram(`🚨 [${displayAccName} 잔액 부족]\n현재 ${Number(currentBalance).toLocaleString()}원입니다.\n아침 자동이체가 정상 처리되었는지 확인하세요.`);
+      await sendTelegram(`🚨 [${displayAccName} 잔액 부족] 5,000원 미만입니다. 아침 입금이 정상 처리되었는지 확인하세요.`);
     }
     return { status: "success" };
   }
 
-  // ── [E] 구매 로직 (정기/수동) ──
+  // ── [E] 구매 로직 및 자동 충전 연계 ──
   let isBuy = false; let targetGames = "";
   if (inputEnv !== "SYNC_ONLY" && !(isScheduled && scheduleCommand === 'CHECK_WIN')) {
     isBuy = true;
@@ -234,7 +256,7 @@ export default async function(api) {
 
     // 💡 월요일 자동구매 성공 시 네트워크 직통 충전 연계
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
-      const orderRes = await autoRechargeOrder(page, displayAccName);
+      const orderRes = await autoRechargeOrder(page, accMode);
       if (orderRes.success) orderNote = `\n- [충전예약완료] 케이뱅크 ${orderRes.account}`;
     }
 
