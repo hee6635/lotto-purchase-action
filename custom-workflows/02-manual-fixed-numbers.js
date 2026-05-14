@@ -22,17 +22,28 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
+// 💡 [엔진 튜닝] 더 확실하고 명확한 고유 ID와 값으로 클릭하도록 튜닝했습니다.
 async function autoRechargeOrder(page, accName) {
   try {
-    console.log(`[${accName}] 자동이체 대비 충전 주문(5,000원) 생성 중...`);
+    console.log(`[${accName}] 예치금 충전 페이지 진입...`);
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
-    await page.click('label:has-text("케이뱅크")');
-    await page.click('label:has-text("5,000원")'); 
-    await page.click('button:has-text("확인")');
-    await page.waitForTimeout(2000);
+    
+    // 1. 케이뱅크 라디오 버튼 또는 라벨 클릭 (우선순위 매핑)
+    const kbankRadio = page.locator('input[value="03"], #rechargeWayClsfCd2, text=케이뱅크').first();
+    await kbankRadio.click({ timeout: 5000 });
+    
+    // 2. 5,000원 라디오 버튼 또는 라벨 클릭
+    const amtRadio = page.locator('input[value="5000"], text=5,000원').first();
+    await amtRadio.click({ timeout: 5000 });
+    
+    // 3. 충전하기(확인) 버튼 클릭
+    const submitBtn = page.locator('input[value="확인"], button:has-text("확인"), .btn_common.mid.blu').first();
+    await submitBtn.click({ timeout: 5000 });
+    
+    await page.waitForTimeout(3000);
     return true;
   } catch (e) {
-    console.error("충전 주문 생성 실패:", e);
+    console.error("충전 주문 생성 실패 원인:", e);
     return false;
   }
 }
@@ -106,7 +117,7 @@ export default async function(api) {
     if (fs.existsSync('result.json')) results = Object.assign(results, JSON.parse(fs.readFileSync('result.json', 'utf8'))); 
   } catch(e) {}
 
-  // ── [★ 테스트 모드 추가] 충전 기능 단독 강제 시운전 ──
+  // ── [A] 충전 예약 기능 테스트 시동 모드 ──
   if (inputEnv === "RECHARGE_TEST") {
     console.log(`[${displayAccName}] ⚡ 충전 예약 기능 테스트 시동`);
     const page = api.page || (api.session ? api.session.page : null);
@@ -116,12 +127,12 @@ export default async function(api) {
     if (success) {
       await sendTelegram(`⚡ [${displayAccName}] 예치금 충전 예약 테스트 성공!\n로봇이 동행복권 웹사이트에서 케이뱅크 5,000원 신청 단계를 오차 없이 클릭했습니다.`);
     } else {
-      await sendTelegram(`❌ [${displayAccName}] 예치금 충전 예약 테스트 실패 (동행복권 화면 구조 변경 가능성 있음)`);
+      await sendTelegram(`❌ [${displayAccName}] 예치금 충전 예약 테스트 실패 (셀렉터 점검 필요)`);
     }
     return { status: "success" };
   }
 
-  // ── [A] 앱(UI) 명령어 처리 (예약 설정/취소) ──
+  // ── [B] 앱(UI) 명령어 처리 (예약 설정/취소) ──
   if (inputEnv && inputEnv !== "SYNC_ONLY" && !inputEnv.includes("_")) {
     if (inputEnv.startsWith("RESERVE_SET|")) {
       const parts = inputEnv.split("|");
@@ -140,7 +151,7 @@ export default async function(api) {
     }
   }
 
-  // ── 브라우저 세팅 ──
+  // ── 브라우저 세팅 및 잔액 조회 ──
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
@@ -156,7 +167,7 @@ export default async function(api) {
   
   if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
 
-  // ── [B] 스케줄: 잔액 파수꾼 (월요일 19:00) ──
+  // ── [C] 스케줄: 잔액 파수꾼 (월요일 19:00) ──
   if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
     console.log(`[${displayAccName}] 🌃 저녁 잔액 파수꾼 점검`);
     if (parseInt(currentBalance) < 5000) {
@@ -167,7 +178,7 @@ export default async function(api) {
     return { status: "success", balance: currentBalance };
   }
 
-  // ── [C] 스케줄/수동 구매 준비 로직 ──
+  // ── [D] 구매 준비 로직 ──
   let isBuyAction = false;
   let targetGamesStr = "";
   let finalStatus = "success"; 
@@ -212,7 +223,7 @@ export default async function(api) {
     }
   }
 
-  // ── [D] 실제 구매 실행 ──
+  // ── [E] 실제 구매 실행 및 월요 충전 연계 ──
   let orderNote = "";
   if (isBuyAction && targetGamesStr) {
     if (parseInt(currentBalance) >= 1000) {
@@ -242,6 +253,7 @@ export default async function(api) {
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
 
+    // 💡 월요일 오전 7시 정기 구매에 성공하면 자동으로 충전 예약을 걸어둠
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
       const orderSuccess = await autoRechargeOrder(page, displayAccName);
       if (orderSuccess) orderNote = "\n- [완료] 오늘 자동이체용 충전 신청 (5,000원)";
@@ -258,7 +270,7 @@ export default async function(api) {
     if (results.history.length > 30) results.history = results.history.slice(0, 30);
   }
 
-  // ── [E] 공통: 장부 동기화 (당첨 확인 포함) ──
+  // ── [F] 장부 동기화 및 당첨 확인 ──
   let ledgerData = [];
   try {
     const purchaseList = await fetchPurchaseList(page);
@@ -294,7 +306,7 @@ export default async function(api) {
   results.last_run = new Date().toISOString(); 
   fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
 
-  // ── [F] 텔레그램 메시지 발송 ──
+  // ── [G] 텔레그램 메시지 발송 ──
   if (isScheduled && scheduleCommand === 'CHECK_WIN') {
     const todayStr = toDateStr(new Date());
     const todayWins = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0 && t.acc === displayAccName && (t.drawDate.replace(/-/g, '') === todayStr || t.drawDate === todayStr));
