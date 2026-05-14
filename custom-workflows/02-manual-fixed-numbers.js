@@ -22,26 +22,17 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [궁극의 네트워크 엔진] UI 클릭 없이 서버에 직접 충전 패킷을 전송합니다.
+// 💡 [궁극의 네트워크 엔진] 성공 암호를 정확히 읽어냅니다.
 async function autoRechargeOrder(page, accName) {
   try {
     console.log(`[${accName}] 예치금 충전 시퀀스 시작 (Network Direct Mode)`);
     
-    // 🕵️‍♂️ [CCTV] 현재 세션 상태 확인
-    console.log("=== 🕵️‍♂️ 로봇 시야 CCTV 가동 ===");
-    console.log("현재 URL:", page.url());
-    console.log("===============================");
-
-    // 브라우저 내부에서 서버로 직접 Fetch 요청 발사
     const result = await page.evaluate(async () => {
       const now = new Date();
-      // Merchant Order ID 생성 (YYYYMMDDHHMMSS + 랜덤 7자리)
       const moid = now.toISOString().replace(/[-:T]/g, '').slice(0, 14) + Math.floor(Math.random() * 1000000).toString().padStart(7, '0');
-      // 입금 기한 생성 (내일 날짜)
       const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
       const expDate = tomorrow.toISOString().replace(/[-:T]/g, '').slice(0, 8);
       
-      // 기술자님이 따오신 kbankProcess.do 주소 그대로 활용 (데이터 동적 생성)
       const url = `https://www.dhlottery.co.kr/mypage/kbankProcess.do?PayMethod=VBANK&GoodsName=%EB%B3%B5%EA%B6%8C%EC%98%88%EC%B9%98%EA%B8%88&Moid=${moid}&UserIP=127.0.0.1&MallUserID=hee6635&VbankExpDate=${expDate}&Amt=5000&VbankBankCode=089&VbankNum=70103031239271&FxVrAccountNo=70103031239271&VBankAccountName=%EB%8F%99%ED%96%89%EB%B3%B5%EA%B6%8C_%EC%9D%B4%ED%9D%AC%EC%A0%95&_=${Date.now()}`;
       
       const response = await fetch(url, { headers: { 'ajax': 'true' } });
@@ -50,11 +41,12 @@ async function autoRechargeOrder(page, accName) {
 
     console.log(`서버 응답 결과: ${JSON.stringify(result)}`);
 
-    // 응답 결과에 따라 성공 여부 판단
-    if (result && result.data && result.data.success) {
-      return { success: true, account: "70103031239271", msg: "충전 신청 완료" };
+    // 💡 동행복권의 성공 코드(4120)를 인식하여 텔레그램으로 전송
+    const resVO = result?.data?.resVO;
+    if (resVO && (resVO.resultCode === "4120" || resVO.vbankNum)) {
+      return { success: true, account: resVO.vbankNum, msg: resVO.resultMsg };
     } else {
-      return { success: false, error: result?.data?.message || "서버 거부" };
+      return { success: false, error: "서버가 올바른 계좌 정보를 반환하지 않음" };
     }
   } catch (e) {
     console.error("충전 프로세스 에러:", e);
@@ -136,9 +128,9 @@ export default async function(api) {
   if (inputEnv === "RECHARGE_TEST") {
     const orderRes = await autoRechargeOrder(page, displayAccName);
     if (orderRes.success) {
-      await sendTelegram(`⚡ [${displayAccName} 충전 신청 성공]\n- 대상계좌: 케이뱅크 ${orderRes.account}\n네트워크 패킷 전송이 완료되었습니다. 이제 입금하시면 처리됩니다!`);
+      await sendTelegram(`⚡ [${displayAccName} 충전 신청 대성공!]\n- 대상계좌: 케이뱅크 ${orderRes.account}\n동행복권 서버가 5,000원 입금 대기를 승인했습니다. 이제 마음 편히 이체하세요!`);
     } else {
-      await sendTelegram(`❌ [${displayAccName} 충전 신청 실패]\n- 원인: ${orderRes.error}\n* 깃허브 로그의 CCTV 내용을 확인해주세요!`);
+      await sendTelegram(`❌ [${displayAccName} 충전 신청 실패]\n- 원인: ${orderRes.error}`);
     }
     return { status: "success" };
   }
