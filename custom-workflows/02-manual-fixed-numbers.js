@@ -22,33 +22,49 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [초고속 iframe 관통 로직] 모든 숨겨진 창을 뒤져서 직접 스크립트를 폭격합니다.
 async function autoRechargeOrder(page, accName) {
   let popupLogs = [];
   try {
-    console.log(`[${accName}] 예치금 충전 시퀀스 시작...`);
+    console.log(`[${accName}] 예치금 충전 페이지 진입...`);
     
     page.on('dialog', async dialog => { 
-      popupLogs.push(dialog.message());
+      const msg = dialog.message();
+      console.log(`[🚨 팝업 발생] ${msg}`);
+      popupLogs.push(msg);
       try { await dialog.accept(); } catch(e) {} 
     });
 
+    // 충전 페이지로 이동
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000); // 숨겨진 iframe이 로딩될 때까지 2초 대기
+    await page.waitForTimeout(2000); 
+
+    // 💡 [CCTV 가동] 로봇이 현재 보고 있는 화면 상태를 깃허브 로그에 낱낱이 출력합니다!
+    console.log("=== 🕵️‍♂️ 로봇 시야 CCTV 가동 ===");
+    console.log("1. 현재 머물고 있는 URL:", page.url());
+    console.log("2. 페이지 제목:", await page.title());
+    console.log("3. 발견된 총 프레임(창) 개수:", page.frames().length);
+    for(let i = 0; i < page.frames().length; i++) {
+        console.log(` - 프레임 [${i}] 주소:`, page.frames()[i].url());
+    }
+    
+    try {
+        const bodyHTML = await page.innerHTML('body');
+        console.log("4. 화면 HTML 글자 미리보기(앞부분 1000자):\n", bodyHTML.replace(/\s+/g, ' ').substring(0, 1000));
+    } catch(e) {
+        console.log("HTML 읽기 실패:", e.message);
+    }
+    console.log("===============================");
 
     let injectResult = [];
     
-    // 💡 화면 안의 모든 프레임(iframe 포함)을 순회하며 공격
     for (const frame of page.frames()) {
       const res = await frame.evaluate(() => {
           let logs = [];
           try {
-              // 1. 이 프레임 안에 케이뱅크 버튼이 있는지 확인
               const kbankRadio = document.querySelector('input[value="03"]') || document.querySelector('#rechargeWayClsfCd2');
               if (kbankRadio) { 
                   kbankRadio.click(); logs.push("케이뱅크 관통"); 
 
-                  // 2. 금액 선택 (Select 박스든 라디오 버튼이든 강제 적용)
                   let selectBox = null;
                   document.querySelectorAll('select').forEach(sel => {
                       if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
@@ -63,7 +79,6 @@ async function autoRechargeOrder(page, accName) {
                       if (amtRadio) { amtRadio.click(); logs.push("버튼 5천원 세팅"); }
                   }
 
-                  // 3. 0.5초 뒤 확인 버튼 강제 클릭
                   const submitBtn = document.querySelector('.btn_common.mid.blu') || document.querySelector('#btnSubmit');
                   if (submitBtn) {
                       setTimeout(() => submitBtn.click(), 500);
@@ -76,7 +91,6 @@ async function autoRechargeOrder(page, accName) {
           return logs;
       });
 
-      // 만약 이 프레임에서 버튼을 찾아 눌렀다면, 반복문 종료
       if (res && res.length > 0) {
           injectResult = res;
           break; 
@@ -85,22 +99,20 @@ async function autoRechargeOrder(page, accName) {
 
     console.log(`브라우저 침투 결과: ${injectResult.join(', ')}`);
     
-    await page.waitForTimeout(5000); // 팝업 및 계좌번호 페이지 로딩 대기
+    await page.waitForTimeout(5000);
 
     let accountInfo = "추출 실패 (수동 확인 필요)";
-    // 계좌번호도 숨겨진 프레임에 뜰 수 있으니 모든 프레임을 긁어옵니다.
     for (const frame of page.frames()) {
         try {
             const bodyText = await frame.innerText('body');
             const match = bodyText.match(/(?:케이뱅크|계좌번호|입금계좌).*?([0-9\-\s]{10,20})/);
             if (match && match[1]) {
-                accountInfo = match[1].replace(/[^0-9]/g, ''); // 숫자만 깔끔하게 추출
+                accountInfo = match[1].replace(/[^0-9]/g, ''); 
                 break;
             }
         } catch(e) {}
     }
 
-    // 팝업 로그나 침투 로그를 합쳐서 보고
     const finalLogs = popupLogs.length > 0 ? popupLogs : injectResult;
     return { success: injectResult.length > 0, account: accountInfo, logs: finalLogs };
   } catch (e) {
@@ -179,7 +191,6 @@ export default async function(api) {
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
-  // ── [A] 특수 모드: RECHARGE_TEST (충전 전용 테스트) ──
   if (inputEnv === "RECHARGE_TEST") {
     const orderRes = await autoRechargeOrder(page, displayAccName);
     const logStr = orderRes.logs.length > 0 ? orderRes.logs.join(" ➡️ ") : "기록 없음";
@@ -187,7 +198,7 @@ export default async function(api) {
     if (orderRes.success) {
       await sendTelegram(`⚡ [${displayAccName} 충전 예약 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 진행로그: [ ${logStr} ]\n위 가상계좌로 자동이체를 걸어두시면 완벽합니다!`);
     } else {
-      await sendTelegram(`❌ [${displayAccName} 충전 예약 실패]\n- 진행로그: [ ${logStr} ]`);
+      await sendTelegram(`❌ [${displayAccName} 충전 예약 실패]\n- 진행로그: [ ${logStr} ]\n* 깃허브 로그의 CCTV 내용을 확인해주세요!`);
     }
     return { status: "success" };
   }
@@ -288,7 +299,6 @@ export default async function(api) {
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
 
-    // 💡 월요일 자동구매 성공 시 충전 자동 예약 연계
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
       const orderRes = await autoRechargeOrder(page, displayAccName);
       if (orderRes.success) orderNote = `\n- [충전예약완료] 케이뱅크 ${orderRes.account}`;
