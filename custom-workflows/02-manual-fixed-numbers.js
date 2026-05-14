@@ -106,6 +106,21 @@ export default async function(api) {
     if (fs.existsSync('result.json')) results = Object.assign(results, JSON.parse(fs.readFileSync('result.json', 'utf8'))); 
   } catch(e) {}
 
+  // ── [★ 테스트 모드 추가] 충전 기능 단독 강제 시운전 ──
+  if (inputEnv === "RECHARGE_TEST") {
+    console.log(`[${displayAccName}] ⚡ 충전 예약 기능 테스트 시동`);
+    const page = api.page || (api.session ? api.session.page : null);
+    if (!page) return { status: "fail", message: "브라우저 연결 실패" };
+    
+    const success = await autoRechargeOrder(page, displayAccName);
+    if (success) {
+      await sendTelegram(`⚡ [${displayAccName}] 예치금 충전 예약 테스트 성공!\n로봇이 동행복권 웹사이트에서 케이뱅크 5,000원 신청 단계를 오차 없이 클릭했습니다.`);
+    } else {
+      await sendTelegram(`❌ [${displayAccName}] 예치금 충전 예약 테스트 실패 (동행복권 화면 구조 변경 가능성 있음)`);
+    }
+    return { status: "success" };
+  }
+
   // ── [A] 앱(UI) 명령어 처리 (예약 설정/취소) ──
   if (inputEnv && inputEnv !== "SYNC_ONLY" && !inputEnv.includes("_")) {
     if (inputEnv.startsWith("RESERVE_SET|")) {
@@ -280,8 +295,6 @@ export default async function(api) {
   fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
 
   // ── [F] 텔레그램 메시지 발송 ──
-  
-  // 1. 토요일 스케줄: 당일 당첨 번개 보고
   if (isScheduled && scheduleCommand === 'CHECK_WIN') {
     const todayStr = toDateStr(new Date());
     const todayWins = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0 && t.acc === displayAccName && (t.drawDate.replace(/-/g, '') === todayStr || t.drawDate === todayStr));
@@ -296,7 +309,6 @@ export default async function(api) {
     return { status: "success", balance: currentBalance };
   }
 
-  // 2. 구매 완료 및 동기화 결과 보고 (수동 & 월요일 자동)
   if (isBuyAction) {
     if (isScheduled) {
       await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
@@ -304,7 +316,6 @@ export default async function(api) {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
   } else if (inputEnv === "SYNC_ONLY") {
-    // 💡 [복구 완료] 앱에서 수동으로 동기화 버튼을 눌렀을 때 알림 발송!
     await sendTelegram(`📡 [${displayAccName} 동기화 완료]\n- 현재 잔액: ${Number(currentBalance).toLocaleString()}원`);
   }
 
