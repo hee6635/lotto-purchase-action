@@ -36,6 +36,7 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
+// 💡 [네트워크 직통 엔진] 서버에 충전 신청 패킷 전송
 async function autoRechargeOrder(page, accMode) {
   try {
     const config = ACCOUNT_CONFIG[accMode];
@@ -87,7 +88,8 @@ const fetchWinNumbers = async (page, round) => {
     const res = await page.goto(`https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${round}`, { waitUntil: 'networkidle', timeout: 10000 }); 
     const json = JSON.parse(await res.text()); 
     return json.returnValue === 'success' ? { 
-      round: json.drwNo, numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6], 
+      round: json.drwNo, 
+      numbers: [json.drwtNo1, json.drwtNo2, json.drwtNo3, json.drwtNo4, json.drwtNo5, json.drwtNo6], 
       bonus: json.bnusNo 
     } : null; 
   } catch (e) { return null; }
@@ -105,7 +107,7 @@ const calcRank = (myNums, winNums, bonusNum) => {
 };
 const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5등', 0:'낙첨' };
 
-// ── 4. 메인 엔진 (💡 기술자님 요청: History 다이어트 로직 탑재) ────────────────
+// ── 4. 메인 엔진 ──────────────────────────────────────────────
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
   const scheduleCommand = (process.env.INPUT_COMMAND || '').trim();
@@ -119,7 +121,7 @@ export default async function(api) {
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
-  // [A] 오전 스케줄: 충전 신청
+  // [A] 월요일 오전 07:00: 충전 전용 모드
   if (isScheduled && scheduleCommand === 'RECHARGE_ONLY') {
     const orderRes = await autoRechargeOrder(page, accMode);
     if (orderRes.success) await sendTelegram(`⚡ [${displayAccName} 충전 신청 완료] 케이뱅크 ${orderRes.account}\n입금 확인 후 저녁에 구매를 시작합니다.`);
@@ -127,7 +129,7 @@ export default async function(api) {
     return { status: "success" };
   }
 
-  // [B] 기본 정보 조회
+  // [B] 기본 정보 조회 (잔액 업데이트)
   let currentBalance = "0"; 
   try {
     await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
@@ -137,7 +139,7 @@ export default async function(api) {
   } catch (e) {}
   if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
 
-  // [C] 수동 명령어 처리 (동기화 및 예약)
+  // [C] 수동 명령어 처리 (동기화 및 예약 설정)
   if (scheduleCommand === 'MANUAL' || !isScheduled) {
     if (inputEnv.startsWith("RESERVE_SET|")) {
       const p = inputEnv.split("|");
@@ -154,7 +156,7 @@ export default async function(api) {
     }
   }
 
-  // [D] 구매 로직 분리
+  // [D] 구매 로직 분리 (수동 vs 스케줄)
   let isBuy = false; let targetGames = "";
   if (scheduleCommand === 'MANUAL' || !isScheduled) {
     if (inputEnv && inputEnv !== "SYNC_ONLY" && !inputEnv.startsWith("RESERVE_") && inputEnv !== "RECHARGE_TEST") {
@@ -196,7 +198,7 @@ export default async function(api) {
       } catch (err) { finalStatus = "fail"; finalMessage = "구매 에러"; }
     } else { finalStatus = "fail"; finalMessage = "잔액 부족"; }
 
-    // 구매 후 잔액 갱신
+    // 구매 직후 잔액 갱신
     try {
       const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle' });
       const reJson = JSON.parse(await reRes.text());
@@ -204,7 +206,7 @@ export default async function(api) {
       if (accMode === 'acc2') results.balance2 = currentBalance; else results.balance1 = currentBalance;
     } catch (e) {}
 
-    // 💡 [핵심] 장부 기록 추가 및 다이어트 (최근 30개만 유지)
+    // 💡 기술자님 요청: 장부 다이어트 (최근 30개만 유지)
     results.history.unshift({ 
         date: new Date().toISOString(), 
         acc: displayAccName, 
@@ -218,7 +220,7 @@ export default async function(api) {
     await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} ${isScheduled ? '월요' : '즉시'} 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
   }
 
-  // [F] 장부 동기화 및 당첨 확인
+  // [F] 장부 동기화 및 당첨 확인 (캐시 최적화)
   let ledgerData = [];
   try {
     const purchaseList = await fetchPurchaseList(page);
