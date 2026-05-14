@@ -95,9 +95,7 @@ const RANK_LABEL = { 1:'1등 🏆', 2:'2등 🥈', 3:'3등 🥉', 4:'4등', 5:'5
 // ── 2. 메인 로직 ───────────────────────────────────────────
 export default async function(api) {
   const isScheduled = process.env.IS_SCHEDULED === 'true';
-  // yml 스케줄을 통해 들어오는 명령 (PURCHASE_AUTO, CHECK_BALANCE, CHECK_WIN)
   const scheduleCommand = (process.env.INPUT_COMMAND || 'PURCHASE_AUTO').trim();
-  // 앱(UI)에서 넘겨주는 데이터 (RESERVE_SET, SYNC_ONLY, 즉시구매 번호)
   const inputEnv = (process.env.INPUT_LOTTO_NUMBERS || '').replace(/['"]/g, '').trim();
   
   const accMode = (process.env.INPUT_ACCOUNT_MODE || 'acc1').trim();
@@ -195,7 +193,6 @@ export default async function(api) {
       }
       targetGamesStr = tGames.join("_");
     } else {
-      // 앱에서 넘어온 즉시 구매 번호
       targetGamesStr = inputEnv;
     }
   }
@@ -208,7 +205,6 @@ export default async function(api) {
         let targetNumbersArray = targetGamesStr.split(/[|_]/).map(group => group.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n)));
         let validGames = targetNumbersArray.filter(game => game.length === 6);
         
-        // 잔고 한도에 맞춰서 영리하게 구매 게임 수 제한
         const maxAffordable = Math.floor(parseInt(currentBalance) / 1000);
         let skippedCount = 0;
         if (validGames.length > maxAffordable) {
@@ -231,13 +227,11 @@ export default async function(api) {
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
 
-    // 구매 완료 후, 스케줄 구매(월요일 아침)인 경우 즉시 충전 예약(번호표 발급) 실행
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
       const orderSuccess = await autoRechargeOrder(page, displayAccName);
       if (orderSuccess) orderNote = "\n- [완료] 오늘 자동이체용 충전 신청 (5,000원)";
     }
 
-    // 구매 완료 직후 잔액 다시 갱신
     try {
       const reRes = await page.goto('https://www.dhlottery.co.kr/mypage/selectUserMndp.do', { waitUntil: 'networkidle', timeout: 15000 });
       const reJson = JSON.parse(await reRes.text());
@@ -302,13 +296,16 @@ export default async function(api) {
     return { status: "success", balance: currentBalance };
   }
 
-  // 2. 구매 완료 보고 (수동 & 월요일 자동)
+  // 2. 구매 완료 및 동기화 결과 보고 (수동 & 월요일 자동)
   if (isBuyAction) {
     if (isScheduled) {
       await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
     } else {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
+  } else if (inputEnv === "SYNC_ONLY") {
+    // 💡 [복구 완료] 앱에서 수동으로 동기화 버튼을 눌렀을 때 알림 발송!
+    await sendTelegram(`📡 [${displayAccName} 동기화 완료]\n- 현재 잔액: ${Number(currentBalance).toLocaleString()}원`);
   }
 
   return { status: finalStatus, balance: currentBalance };
