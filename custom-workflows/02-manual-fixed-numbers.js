@@ -22,19 +22,14 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [무적 튜닝] iframe 탐색, 강제 클릭, 팝업 자동 수락 기능이 추가된 궁극의 충전 함수
+// 💡 [계좌번호 추출 기능 추가] 충전 완료 후 화면에서 계좌번호를 읽어옵니다.
 async function autoRechargeOrder(page, accName) {
   try {
     console.log(`[${accName}] 예치금 충전 페이지 진입...`);
-    
-    // 갑자기 뜨는 팝업("충전하시겠습니까?" 등) 무조건 자동 '확인' 처리
-    page.on('dialog', async dialog => {
-      try { await dialog.accept(); } catch(e) {}
-    });
+    page.on('dialog', async dialog => { try { await dialog.accept(); } catch(e) {} });
 
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
 
-    // 숨겨진 프레임까지 모조리 샅샅이 뒤져서 버튼을 찾는 레이더 함수
     const clickAnywhere = async (selectors) => {
       for (const frame of page.frames()) {
         for (const sel of selectors) {
@@ -50,19 +45,16 @@ async function autoRechargeOrder(page, accName) {
       return false;
     };
 
-    console.log("1. 가상계좌(케이뱅크) 선택 시도...");
     await clickAnywhere(['label:has-text("가상계좌")', 'label:has-text("케이뱅크")', 'input[value="03"]', 'input[value="04"]']);
     
-    console.log("2. 5,000원 금액 선택 시도...");
     const amtClicked = await clickAnywhere(['label:has-text("5,000원")', 'label:has-text("5,000")', 'input[value="5000"]']);
-    if (!amtClicked) { // 버튼을 못 찾았다면 자바스크립트로 셀렉트 박스 강제 변경
+    if (!amtClicked) { 
        await page.evaluate(() => {
          const sel = document.querySelector('select');
          if(sel) { sel.value = '5000'; sel.dispatchEvent(new Event('change')); }
        });
     }
     
-    console.log("3. 충전 확인 버튼 클릭 시도...");
     const submitClicked = await clickAnywhere(['a:has-text("확인")', 'button:has-text("확인")', 'a:has-text("충전하기")', '.btn_common.mid.blu']);
     if (!submitClicked) {
         await page.evaluate(() => {
@@ -71,11 +63,23 @@ async function autoRechargeOrder(page, accName) {
         });
     }
     
-    await page.waitForTimeout(3000); // 팝업 처리 대기 시간
-    return true;
+    await page.waitForTimeout(3000); // 결제 완료 페이지 로딩 대기
+
+    // 🕵️‍♂️ 계좌번호 긁어오기 로직
+    let accountInfo = "번호 스크래핑 실패 (홈페이지 확인 요망)";
+    try {
+      const bodyText = await page.innerText('body');
+      // 화면 텍스트 중 케이뱅크 계좌번호 패턴(숫자 10~14자리 또는 하이픈 포함)을 찾음
+      const match = bodyText.match(/(?:케이뱅크|계좌번호).*?([0-9]{10,15}|[0-9\-]{12,18})/);
+      if (match && match[1]) {
+        accountInfo = `케이뱅크 ${match[1]}`;
+      }
+    } catch(e) {}
+
+    return { success: true, account: accountInfo };
   } catch (e) {
     console.error("충전 주문 생성 실패 원인:", e);
-    return false;
+    return { success: false, account: "" };
   }
 }
 
@@ -154,9 +158,9 @@ export default async function(api) {
     const page = api.page || (api.session ? api.session.page : null);
     if (!page) return { status: "fail", message: "브라우저 연결 실패" };
     
-    const success = await autoRechargeOrder(page, displayAccName);
-    if (success) {
-      await sendTelegram(`⚡ [${displayAccName}] 예치금 충전 예약 테스트 성공!\n로봇이 화면 속 프레임들을 샅샅이 뒤져 케이뱅크 5,000원 신청을 완료했습니다.`);
+    const orderResult = await autoRechargeOrder(page, displayAccName);
+    if (orderResult.success) {
+      await sendTelegram(`⚡ [${displayAccName}] 예치금 충전 예약 테스트 성공!\n- 입금계좌: [ ${orderResult.account} ]\n위 계좌가 기술자님의 실제 가상계좌가 맞는지 확인해 주세요!`);
     } else {
       await sendTelegram(`❌ [${displayAccName}] 예치금 충전 예약 테스트 실패 (자세한 내용은 깃허브 로그를 확인하세요)`);
     }
@@ -285,8 +289,8 @@ export default async function(api) {
     }
 
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
-      const orderSuccess = await autoRechargeOrder(page, displayAccName);
-      if (orderSuccess) orderNote = "\n- [완료] 오늘 자동이체용 충전 신청 (5,000원)";
+      const orderResult = await autoRechargeOrder(page, displayAccName);
+      if (orderResult.success) orderNote = `\n- [충전예약완료] 입금계좌: ${orderResult.account}`;
     }
 
     try {
@@ -353,7 +357,7 @@ export default async function(api) {
 
   if (isBuyAction) {
     if (isScheduled) {
-      await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
+      await sendTelegram(`🗓️ [${displayAccName} 월요 구매]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
     } else {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
