@@ -2,15 +2,23 @@ name: 로또 마스터 시스템 (월요구매 & 토요당첨알림)
 
 on:
   schedule:
-    - cron: '0 22 * * 0' # [1차] 월요일 오전 07:00 (구매 및 충전예약)
-    - cron: '0 10 * * 1' # [2차] 월요일 오후 19:00 (잔액 파수꾼)
-    - cron: '15 12 * * 6' # [3차] 토요일 오후 21:15 (당첨 결과 번개 보고)
+    - cron: '0 22 * * 0' # [1차] 월요일 오전 07:00 KST (구매 및 충전예약)
+    - cron: '0 10 * * 1' # [2차] 월요일 오후 19:00 KST (잔액 파수꾼)
+    - cron: '15 12 * * 6' # [3차] 토요일 오후 21:15 KST (당첨 번개 보고)
   workflow_dispatch:
     inputs:
-      command_data:
-        description: '실행 모드 (PURCHASE_AUTO, CHECK_BALANCE, CHECK_WIN)'
-        required: true
-        default: 'PURCHASE_AUTO'
+      lotto_numbers:
+        description: '로또 번호 또는 명령 (SYNC_ONLY)'
+        required: false
+        default: 'SYNC_ONLY'
+      account_mode:
+        description: '계정 모드 (acc1, acc2, both)'
+        required: false
+        default: 'both'
+      date_range:
+        description: '조회 기간 (YYYYMMDD_YYYYMMDD)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -20,15 +28,24 @@ jobs:
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/playwright:v1.55.1-jammy
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
-      - name: Install
+
+      - name: Install dependencies
         run: npm ci
-      - name: Run Bot
+
+      # ─── [1] 계정 1 실행 단계 ───
+      - name: Run Bot (Acc 1)
+        if: |
+          (github.event_name == 'workflow_dispatch' && (github.event.inputs.account_mode == 'acc1' || github.event.inputs.account_mode == 'both')) ||
+          (github.event_name == 'schedule')
         uses: ./
         env:
-          INPUT_COMMAND: ${{ github.event.inputs.command_data || (github.event.schedule == '0 22 * * 0' && 'PURCHASE_AUTO' || (github.event.schedule == '0 10 * * 1' && 'CHECK_BALANCE' || 'CHECK_WIN')) }}
-          INPUT_ACCOUNT_MODE: 'both'
+          INPUT_ACCOUNT_MODE: 'acc1'
+          INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
+          INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
+          # 스케줄 실행일 때는 시간에 따라 명령을 매핑하고, 앱에서 수동으로 올 때는 기본 구매 모드로 처리합니다.
+          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'PURCHASE_AUTO' || (github.event.schedule == '0 10 * * 1' && 'CHECK_BALANCE' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
@@ -36,3 +53,36 @@ jobs:
           dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD }}
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
+
+      # ─── [2] 계정 2 실행 단계 ───
+      - name: Run Bot (Acc 2)
+        if: |
+          (github.event_name == 'workflow_dispatch' && (github.event.inputs.account_mode == 'acc2' || github.event.inputs.account_mode == 'both')) ||
+          (github.event_name == 'schedule')
+        uses: ./
+        env:
+          INPUT_ACCOUNT_MODE: 'acc2'
+          INPUT_LOTTO_NUMBERS: ${{ github.event.inputs.lotto_numbers }}
+          INPUT_DATE_RANGE: ${{ github.event.inputs.date_range }}
+          INPUT_COMMAND: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 22 * * 0' && 'PURCHASE_AUTO' || (github.event.schedule == '0 10 * * 1' && 'CHECK_BALANCE' || 'CHECK_WIN')) || 'PURCHASE_AUTO' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          dhlottery-id: ${{ secrets.DHLOTTERY_ID_2 }}
+          dhlottery-password: ${{ secrets.DHLOTTERY_PASSWORD_2 }}
+          github-token: ${{ github.token }}
+          workflow-file: custom-workflows/02-manual-fixed-numbers.js
+
+      # ─── [3] 안전한 결과 장부 저장 ───
+      - name: Save Result
+        if: always()
+        run: |
+          git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          if [ -f "result.json" ]; then
+            git add result.json
+            git commit -m "🤖 로또 장부 업데이트" || echo "변경사항 없음"
+            git pull --rebase origin main
+            git push origin main
+          fi
