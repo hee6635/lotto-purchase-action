@@ -22,100 +22,43 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [초고속 직진 로직] 쓸데없는 은행 선택을 빼고, 금액선택 -> 충전하기만 누릅니다!
+// 💡 [궁극의 네트워크 엔진] UI 클릭 없이 서버에 직접 충전 패킷을 전송합니다.
 async function autoRechargeOrder(page, accName) {
-  let popupLogs = [];
   try {
-    console.log(`[${accName}] 예치금 충전 페이지 진입...`);
+    console.log(`[${accName}] 예치금 충전 시퀀스 시작 (Network Direct Mode)`);
     
-    page.on('dialog', async dialog => { 
-      const msg = dialog.message();
-      console.log(`[🚨 팝업 발생] ${msg}`);
-      popupLogs.push(msg);
-      try { await dialog.accept(); } catch(e) {} 
-    });
-
-    await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000); 
-
-    // 🕵️‍♂️ (만약을 위한 CCTV 가동 유지)
+    // 🕵️‍♂️ [CCTV] 현재 세션 상태 확인
     console.log("=== 🕵️‍♂️ 로봇 시야 CCTV 가동 ===");
-    console.log("1. URL:", page.url());
-    try {
-        const bodyHTML = await page.innerHTML('body');
-        console.log("2. HTML 미리보기:\n", bodyHTML.replace(/\s+/g, ' ').substring(0, 800));
-    } catch(e) {}
+    console.log("현재 URL:", page.url());
     console.log("===============================");
 
-    let injectResult = [];
-    
-    // 숨겨진 iframe 뚫고 직진!
-    for (const frame of page.frames()) {
-      const res = await frame.evaluate(() => {
-          let logs = [];
-          try {
-              // 1. 금액(5,000원) 다이렉트 선택
-              let selectBox = null;
-              document.querySelectorAll('select').forEach(sel => {
-                  if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
-              });
-              
-              let amtSet = false;
-              if (selectBox) {
-                  selectBox.value = '5000';
-                  selectBox.dispatchEvent(new Event('change', { bubbles: true }));
-                  logs.push("금액탭 5천원 선택");
-                  amtSet = true;
-              } else {
-                  const amtRadio = document.querySelector('input[value="5000"]');
-                  if (amtRadio) { amtRadio.click(); logs.push("금액버튼 5천원 클릭"); amtSet = true; }
-              }
+    // 브라우저 내부에서 서버로 직접 Fetch 요청 발사
+    const result = await page.evaluate(async () => {
+      const now = new Date();
+      // Merchant Order ID 생성 (YYYYMMDDHHMMSS + 랜덤 7자리)
+      const moid = now.toISOString().replace(/[-:T]/g, '').slice(0, 14) + Math.floor(Math.random() * 1000000).toString().padStart(7, '0');
+      // 입금 기한 생성 (내일 날짜)
+      const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+      const expDate = tomorrow.toISOString().replace(/[-:T]/g, '').slice(0, 8);
+      
+      // 기술자님이 따오신 kbankProcess.do 주소 그대로 활용 (데이터 동적 생성)
+      const url = `https://www.dhlottery.co.kr/mypage/kbankProcess.do?PayMethod=VBANK&GoodsName=%EB%B3%B5%EA%B6%8C%EC%98%88%EC%B9%98%EA%B8%88&Moid=${moid}&UserIP=127.0.0.1&MallUserID=hee6635&VbankExpDate=${expDate}&Amt=5000&VbankBankCode=089&VbankNum=70103031239271&FxVrAccountNo=70103031239271&VBankAccountName=%EB%8F%99%ED%96%89%EB%B3%B5%EA%B6%8C_%EC%9D%B4%ED%9D%AC%EC%A0%95&_=${Date.now()}`;
+      
+      const response = await fetch(url, { headers: { 'ajax': 'true' } });
+      return await response.json();
+    });
 
-              // 2. 금액 세팅이 성공했다면 0.5초 뒤 '충전하기' 클릭
-              if (amtSet) {
-                  const submitBtn = document.querySelector('.btn_common.mid.blu') || 
-                                    document.querySelector('#btnSubmit') ||
-                                    Array.from(document.querySelectorAll('a, button')).find(el => el.textContent.includes('충전하기') || el.textContent.includes('확인'));
-                  if (submitBtn) {
-                      setTimeout(() => submitBtn.click(), 500);
-                      logs.push("충전하기 버튼 클릭 완료");
-                  } else {
-                      logs.push("충전하기 버튼을 못 찾음");
-                  }
-              }
-          } catch(err) {
-              logs.push("에러: " + err.message);
-          }
-          return logs;
-      });
+    console.log(`서버 응답 결과: ${JSON.stringify(result)}`);
 
-      if (res && res.length > 0) {
-          injectResult = res;
-          break; 
-      }
+    // 응답 결과에 따라 성공 여부 판단
+    if (result && result.data && result.data.success) {
+      return { success: true, account: "70103031239271", msg: "충전 신청 완료" };
+    } else {
+      return { success: false, error: result?.data?.message || "서버 거부" };
     }
-
-    console.log(`브라우저 침투 결과: ${injectResult.join(', ')}`);
-    
-    await page.waitForTimeout(5000);
-
-    let accountInfo = "추출 실패";
-    for (const frame of page.frames()) {
-        try {
-            const bodyText = await frame.innerText('body');
-            const match = bodyText.match(/(?:케이뱅크|계좌번호|입금계좌).*?([0-9\-\s]{10,20})/);
-            if (match && match[1]) {
-                accountInfo = match[1].replace(/[^0-9]/g, ''); 
-                break;
-            }
-        } catch(e) {}
-    }
-
-    const finalLogs = popupLogs.length > 0 ? popupLogs : injectResult;
-    return { success: injectResult.includes("충전하기 버튼 클릭 완료") || popupLogs.length > 0, account: accountInfo, logs: finalLogs };
   } catch (e) {
     console.error("충전 프로세스 에러:", e);
-    return { success: false, account: "", logs: popupLogs };
+    return { success: false, error: e.message };
   }
 }
 
@@ -189,14 +132,13 @@ export default async function(api) {
   const page = api.page || (api.session ? api.session.page : null);
   if (!page) return { status: "fail", message: "브라우저 연결 실패" };
 
+  // ── [A] 특수 모드: RECHARGE_TEST (네트워크 직통 테스트) ──
   if (inputEnv === "RECHARGE_TEST") {
     const orderRes = await autoRechargeOrder(page, displayAccName);
-    const logStr = orderRes.logs.length > 0 ? orderRes.logs.join(" ➡️ ") : "기록 없음";
-    
     if (orderRes.success) {
-      await sendTelegram(`⚡ [${displayAccName} 충전 예약 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 진행로그: [ ${logStr} ]\n위 계좌로 자동이체를 걸어두시면 완벽합니다!`);
+      await sendTelegram(`⚡ [${displayAccName} 충전 신청 성공]\n- 대상계좌: 케이뱅크 ${orderRes.account}\n네트워크 패킷 전송이 완료되었습니다. 이제 입금하시면 처리됩니다!`);
     } else {
-      await sendTelegram(`❌ [${displayAccName} 충전 예약 실패]\n- 진행로그: [ ${logStr} ]\n* 깃허브 로그의 CCTV 내용을 확인해주세요!`);
+      await sendTelegram(`❌ [${displayAccName} 충전 신청 실패]\n- 원인: ${orderRes.error}\n* 깃허브 로그의 CCTV 내용을 확인해주세요!`);
     }
     return { status: "success" };
   }
@@ -231,7 +173,7 @@ export default async function(api) {
   // ── [D] 스케줄: 잔액 파수꾼 (월요일 저녁) ──
   if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
     if (parseInt(currentBalance) < 5000) {
-      await sendTelegram(`🚨 [${displayAccName} 잔액 부족]\n현재 ${Number(currentBalance).toLocaleString()}원입니다.\n아침 충전 및 이체가 정상 처리되었는지 확인하세요.`);
+      await sendTelegram(`🚨 [${displayAccName} 잔액 부족]\n현재 ${Number(currentBalance).toLocaleString()}원입니다.\n아침 자동이체가 정상 처리되었는지 확인하세요.`);
     }
     return { status: "success" };
   }
@@ -247,6 +189,7 @@ export default async function(api) {
       if (today > res.endDate) {
         if (res.targetMode === 'both' || res.targetMode === accMode) {
           res.isActive = false; fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
+          await sendTelegram(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
         }
         return { status: "success" };
       }
@@ -297,6 +240,7 @@ export default async function(api) {
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
 
+    // 💡 월요일 자동구매 성공 시 네트워크 직통 충전 연계
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
       const orderRes = await autoRechargeOrder(page, displayAccName);
       if (orderRes.success) orderNote = `\n- [충전예약완료] 케이뱅크 ${orderRes.account}`;
@@ -349,7 +293,7 @@ export default async function(api) {
   results.last_run = new Date().toISOString(); 
   fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
 
-  // ── [G] 텔레그램 발송 ──
+  // ── [G] 토요일 당첨 알림 ──
   if (isScheduled && scheduleCommand === 'CHECK_WIN') {
     const todayStr = toDateStr(new Date());
     const todayWins = ledgerData.filter(t => t.drawed && t.winTotalAmt > 0 && t.acc === displayAccName && (t.drawDate.replace(/-/g, '') === todayStr || t.drawDate === todayStr));
