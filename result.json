@@ -1,5 +1,5 @@
 {
-  "balance1": "55000",
+  "balance1": "60000",
   "balance2": "10000",
   "history": [
     {
@@ -635,7 +635,7 @@
     "endDate": "20261112",
     "favs": []
   },
-  "last_run": "2026-05-14T11:09:29.329Z",
+  "last_run": "2026-05-14T11:15:24.367Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
