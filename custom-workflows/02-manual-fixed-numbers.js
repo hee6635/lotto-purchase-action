@@ -22,73 +22,87 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [초고속 강제 주입 로직] 버튼이든, 목록(Select)이든 0.1초 만에 값을 꽂아버립니다.
+// 💡 [초고속 iframe 관통 로직] 모든 숨겨진 창을 뒤져서 직접 스크립트를 폭격합니다.
 async function autoRechargeOrder(page, accName) {
   let popupLogs = [];
   try {
     console.log(`[${accName}] 예치금 충전 시퀀스 시작...`);
     
-    // 팝업 무조건 '확인' 누르고 기록
     page.on('dialog', async dialog => { 
       popupLogs.push(dialog.message());
       try { await dialog.accept(); } catch(e) {} 
     });
 
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000); // 렌더링 대기
+    await page.waitForTimeout(2000); // 숨겨진 iframe이 로딩될 때까지 2초 대기
 
-    // 자바스크립트를 브라우저 심장부에 직접 꽂아서 실행 (타임아웃 발생 원천 차단)
-    const injectResult = await page.evaluate(() => {
-        let logs = [];
-        try {
-            // 1. 케이뱅크(가상계좌) 선택
-            const kbankRadio = document.querySelector('input[value="03"]') || document.querySelector('#rechargeWayClsfCd2');
-            if (kbankRadio) { kbankRadio.click(); logs.push("케이뱅크 체크"); }
+    let injectResult = [];
+    
+    // 💡 화면 안의 모든 프레임(iframe 포함)을 순회하며 공격
+    for (const frame of page.frames()) {
+      const res = await frame.evaluate(() => {
+          let logs = [];
+          try {
+              // 1. 이 프레임 안에 케이뱅크 버튼이 있는지 확인
+              const kbankRadio = document.querySelector('input[value="03"]') || document.querySelector('#rechargeWayClsfCd2');
+              if (kbankRadio) { 
+                  kbankRadio.click(); logs.push("케이뱅크 관통"); 
 
-            // 2. 금액 선택 (Select 박스인 경우 강제로 값 변경)
-            let selectBox = null;
-            document.querySelectorAll('select').forEach(sel => {
-                if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
-            });
-            
-            if (selectBox) {
-                selectBox.value = '5000';
-                selectBox.dispatchEvent(new Event('change', { bubbles: true }));
-                logs.push("목록에서 5,000원 선택");
-            } else {
-                // 혹시 라디오 버튼일 경우
-                const amtRadio = document.querySelector('input[value="5000"]');
-                if (amtRadio) { amtRadio.click(); logs.push("버튼 5,000원 클릭"); }
-            }
+                  // 2. 금액 선택 (Select 박스든 라디오 버튼이든 강제 적용)
+                  let selectBox = null;
+                  document.querySelectorAll('select').forEach(sel => {
+                      if(sel.innerHTML.includes('5000') || sel.innerHTML.includes('5,000')) selectBox = sel;
+                  });
+                  
+                  if (selectBox) {
+                      selectBox.value = '5000';
+                      selectBox.dispatchEvent(new Event('change', { bubbles: true }));
+                      logs.push("목록 5천원 세팅");
+                  } else {
+                      const amtRadio = document.querySelector('input[value="5000"]');
+                      if (amtRadio) { amtRadio.click(); logs.push("버튼 5천원 세팅"); }
+                  }
 
-            // 3. 확인/충전하기 버튼 클릭 (금액 세팅 후 0.5초 뒤 자동 클릭)
-            const submitBtn = document.querySelector('.btn_common.mid.blu') || document.querySelector('#btnSubmit');
-            if (submitBtn) {
-                setTimeout(() => submitBtn.click(), 500);
-                logs.push("최종 충전버튼 클릭완료");
-            }
-        } catch(err) {
-            logs.push("JS실행에러: " + err.message);
-        }
-        return logs;
-    });
+                  // 3. 0.5초 뒤 확인 버튼 강제 클릭
+                  const submitBtn = document.querySelector('.btn_common.mid.blu') || document.querySelector('#btnSubmit');
+                  if (submitBtn) {
+                      setTimeout(() => submitBtn.click(), 500);
+                      logs.push("최종 결제버튼 클릭");
+                  }
+              }
+          } catch(err) {
+              logs.push("에러: " + err.message);
+          }
+          return logs;
+      });
+
+      // 만약 이 프레임에서 버튼을 찾아 눌렀다면, 반복문 종료
+      if (res && res.length > 0) {
+          injectResult = res;
+          break; 
+      }
+    }
 
     console.log(`브라우저 침투 결과: ${injectResult.join(', ')}`);
     
-    // 서버가 처리할 시간 주기
-    await page.waitForTimeout(5000); 
+    await page.waitForTimeout(5000); // 팝업 및 계좌번호 페이지 로딩 대기
 
-    // 화면에서 계좌번호 스크래핑
     let accountInfo = "추출 실패 (수동 확인 필요)";
-    try {
-      const bodyText = await page.innerText('body');
-      const match = bodyText.match(/(?:케이뱅크|계좌번호|입금계좌).*?([0-9\-\s]{10,20})/);
-      if (match && match[1]) {
-        accountInfo = match[1].replace(/[^0-9]/g, ''); // 숫자만 깔끔하게 빼오기
-      }
-    } catch(e) {}
+    // 계좌번호도 숨겨진 프레임에 뜰 수 있으니 모든 프레임을 긁어옵니다.
+    for (const frame of page.frames()) {
+        try {
+            const bodyText = await frame.innerText('body');
+            const match = bodyText.match(/(?:케이뱅크|계좌번호|입금계좌).*?([0-9\-\s]{10,20})/);
+            if (match && match[1]) {
+                accountInfo = match[1].replace(/[^0-9]/g, ''); // 숫자만 깔끔하게 추출
+                break;
+            }
+        } catch(e) {}
+    }
 
-    return { success: true, account: accountInfo, logs: popupLogs };
+    // 팝업 로그나 침투 로그를 합쳐서 보고
+    const finalLogs = popupLogs.length > 0 ? popupLogs : injectResult;
+    return { success: injectResult.length > 0, account: accountInfo, logs: finalLogs };
   } catch (e) {
     console.error("충전 프로세스 에러:", e);
     return { success: false, account: "", logs: popupLogs };
@@ -168,11 +182,12 @@ export default async function(api) {
   // ── [A] 특수 모드: RECHARGE_TEST (충전 전용 테스트) ──
   if (inputEnv === "RECHARGE_TEST") {
     const orderRes = await autoRechargeOrder(page, displayAccName);
-    const logStr = orderRes.logs.length > 0 ? orderRes.logs.join(" ➡️ ") : "기록된 팝업 없음(정상)";
+    const logStr = orderRes.logs.length > 0 ? orderRes.logs.join(" ➡️ ") : "기록 없음";
+    
     if (orderRes.success) {
-      await sendTelegram(`⚡ [${displayAccName} 충전 테스트 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 팝업로그: ${logStr}`);
+      await sendTelegram(`⚡ [${displayAccName} 충전 예약 성공]\n- 입금계좌: 케이뱅크 ${orderRes.account}\n- 진행로그: [ ${logStr} ]\n위 가상계좌로 자동이체를 걸어두시면 완벽합니다!`);
     } else {
-      await sendTelegram(`❌ [${displayAccName} 충전 테스트 실패]\n- 팝업로그: ${logStr}`);
+      await sendTelegram(`❌ [${displayAccName} 충전 예약 실패]\n- 진행로그: [ ${logStr} ]`);
     }
     return { status: "success" };
   }
@@ -207,7 +222,7 @@ export default async function(api) {
   // ── [D] 스케줄: 잔액 파수꾼 (월요일 저녁) ──
   if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
     if (parseInt(currentBalance) < 5000) {
-      await sendTelegram(`🚨 [${displayAccName} 잔액 부족]\n현재 ${Number(currentBalance).toLocaleString()}원입니다.\n아침 자동이체가 정상 처리되었는지 확인하세요.`);
+      await sendTelegram(`🚨 [${displayAccName} 잔액 부족]\n현재 ${Number(currentBalance).toLocaleString()}원입니다.\n아침 충전 및 이체가 정상 처리되었는지 확인하세요.`);
     }
     return { status: "success" };
   }
