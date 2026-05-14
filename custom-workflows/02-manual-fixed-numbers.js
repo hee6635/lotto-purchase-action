@@ -77,7 +77,7 @@ const fetchTicketDetail = async (page, ntslOrdrNo, barcd) => {
 
 const fetchWinNumbers = async (page, round) => {
   try { 
-    const res = await page.goto(`https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${round}`, { waitUntil: 'networkidle', timeout: 10000 }); 
+    const res = await page.goto('https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=' + round, { waitUntil: 'networkidle', timeout: 10000 }); 
     const json = JSON.parse(await res.text()); 
     return json.returnValue === 'success' ? { 
       round: json.drwNo, 
@@ -196,7 +196,8 @@ export default async function(api) {
       if (today > res.endDate) {
         if (res.targetMode === 'both' || res.targetMode === accMode) {
           res.isActive = false; results.last_run = new Date().toISOString(); fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-          await sendTelegram suicide(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
+          // 💡 [오타 완벽 수정] 숨어있던 유령 구문을 완벽히 지웠습니다!
+          await sendTelegram(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
         }
         return { status: "success" };
       }
@@ -321,7 +322,7 @@ export default async function(api) {
 
   if (isBuyAction) {
     if (isScheduled) {
-      await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
+      await sendTelegram(`🗓️ [${displayAccName} 월요 구매]\n- 상태: ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
     } else {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
