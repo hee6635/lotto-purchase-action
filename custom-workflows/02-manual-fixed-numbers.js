@@ -22,18 +22,18 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [엔진 튜닝] 더 확실하고 명확한 고유 ID와 값으로 클릭하도록 튜닝했습니다.
+// 💡 [버그 수정 완료] 콤마(,) 연산 시 에러를 유발하던 text= 구문을 제거하고 최신 :has-text() 구문으로 교체했습니다.
 async function autoRechargeOrder(page, accName) {
   try {
     console.log(`[${accName}] 예치금 충전 페이지 진입...`);
     await page.goto('https://www.dhlottery.co.kr/payment.do?method=recharge', { waitUntil: 'networkidle' });
     
-    // 1. 케이뱅크 라디오 버튼 또는 라벨 클릭 (우선순위 매핑)
-    const kbankRadio = page.locator('input[value="03"], #rechargeWayClsfCd2, text=케이뱅크').first();
+    // 1. 케이뱅크 버튼 선택
+    const kbankRadio = page.locator('input[value="03"], #rechargeWayClsfCd2, label:has-text("케이뱅크")').first();
     await kbankRadio.click({ timeout: 5000 });
     
-    // 2. 5,000원 라디오 버튼 또는 라벨 클릭
-    const amtRadio = page.locator('input[value="5000"], text=5,000원').first();
+    // 2. 5,000원 버튼 선택
+    const amtRadio = page.locator('input[value="5000"], label:has-text("5,000원"), label:has-text("5,000")').first();
     await amtRadio.click({ timeout: 5000 });
     
     // 3. 충전하기(확인) 버튼 클릭
@@ -171,7 +171,7 @@ export default async function(api) {
   if (isScheduled && scheduleCommand === 'CHECK_BALANCE') {
     console.log(`[${displayAccName}] 🌃 저녁 잔액 파수꾼 점검`);
     if (parseInt(currentBalance) < 5000) {
-      await sendTelegram(`🚨 [${displayAccName} 잔액 경고]\n오늘 아침 자동이체가 실패한 것 같습니다!\n현재 잔액: ${Number(currentBalance).toLocaleString()}원 (확인 필요)`);
+      await sendTelegram(`🚨 [${displayAccName} 잔액 경고]\n오늘 자동이체가 실패한 것 같습니다!\n현재 잔액: ${Number(currentBalance).toLocaleString()}원 (확인 필요)`);
     }
     results.last_run = new Date().toISOString();
     fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
@@ -253,7 +253,6 @@ export default async function(api) {
       finalStatus = "fail"; finalMessage = "잔액 부족 (최소 1,000원 필요)"; 
     }
 
-    // 💡 월요일 오전 7시 정기 구매에 성공하면 자동으로 충전 예약을 걸어둠
     if (isScheduled && scheduleCommand === 'PURCHASE_AUTO' && finalStatus === "success") {
       const orderSuccess = await autoRechargeOrder(page, displayAccName);
       if (orderSuccess) orderNote = "\n- [완료] 오늘 자동이체용 충전 신청 (5,000원)";
@@ -323,7 +322,7 @@ export default async function(api) {
 
   if (isBuyAction) {
     if (isScheduled) {
-      await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
+      await sendTelegram suicide(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
     } else {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
