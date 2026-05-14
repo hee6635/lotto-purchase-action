@@ -22,7 +22,6 @@ const sendTelegram = async (msg) => {
   } catch(e) {}
 };
 
-// 💡 [버그 수정 완료] 콤마(,) 연산 시 에러를 유발하던 text= 구문을 제거하고 최신 :has-text() 구문으로 교체했습니다.
 async function autoRechargeOrder(page, accName) {
   try {
     console.log(`[${accName}] 예치금 충전 페이지 진입...`);
@@ -197,7 +196,7 @@ export default async function(api) {
       if (today > res.endDate) {
         if (res.targetMode === 'both' || res.targetMode === accMode) {
           res.isActive = false; results.last_run = new Date().toISOString(); fs.writeFileSync('result.json', JSON.stringify(results, null, 2));
-          await sendTelegram(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
+          await sendTelegram suicide(`⚠️ [예약 만료] 기한이 종료되어 자동 구매를 중단합니다.`);
         }
         return { status: "success" };
       }
@@ -322,7 +321,7 @@ export default async function(api) {
 
   if (isBuyAction) {
     if (isScheduled) {
-      await sendTelegram suicide(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
+      await sendTelegram(`🗓️ [${displayAccName} 월요 구매] ${finalMessage}${orderNote}\n- 잔액: ${Number(currentBalance).toLocaleString()}원\n- 오후 7시에 잔액을 최종 점검합니다.`);
     } else {
       await sendTelegram(`${finalStatus === "success" ? "🎉" : "⚠️"} [${displayAccName} 즉시 구매]\n- 상태: ${finalMessage}\n- 잔액: ${Number(currentBalance).toLocaleString()}원`);
     }
