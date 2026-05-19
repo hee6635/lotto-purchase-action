@@ -1,7 +1,56 @@
 {
-  "balance1": "60000",
+  "balance1": "55000",
   "balance2": "10000",
   "history": [
+    {
+      "date": "2026-05-19T21:49:53.578Z",
+      "acc": "계정 1",
+      "status": "success",
+      "message": "5게임 구매 성공!",
+      "games": [
+        [
+          10,
+          16,
+          33,
+          34,
+          36,
+          44
+        ],
+        [
+          10,
+          18,
+          20,
+          35,
+          37,
+          45
+        ],
+        [
+          6,
+          15,
+          17,
+          23,
+          41,
+          44
+        ],
+        [
+          10,
+          16,
+          23,
+          25,
+          28,
+          44
+        ],
+        [
+          19,
+          23,
+          30,
+          36,
+          39,
+          43
+        ]
+      ],
+      "isScheduled": false
+    },
     {
       "date": "2026-05-12T11:37:20.565Z",
       "acc": "계정 2",
@@ -487,6 +536,252 @@
       "acc": "계정 1"
     },
     {
+      "acc": "계정 1",
+      "ntslOrdrNo": "2026032400560440698",
+      "buyDate": "2026-03-24",
+      "round": 1217,
+      "drawDate": "2026/03/28",
+      "drawed": true,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            2,
+            6,
+            8,
+            26,
+            30,
+            35
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "B",
+          "type": "자동",
+          "numbers": [
+            19,
+            24,
+            28,
+            33,
+            40,
+            41
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "C",
+          "type": "자동",
+          "numbers": [
+            2,
+            3,
+            24,
+            33,
+            42,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "D",
+          "type": "자동",
+          "numbers": [
+            11,
+            19,
+            27,
+            31,
+            37,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "E",
+          "type": "자동",
+          "numbers": [
+            9,
+            18,
+            31,
+            33,
+            36,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 1",
+      "ntslOrdrNo": "2026031300558031431",
+      "buyDate": "2026-03-13",
+      "round": 1215,
+      "drawDate": "2026/03/14",
+      "drawed": true,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            8,
+            21,
+            22,
+            30,
+            39,
+            41
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "B",
+          "type": "자동",
+          "numbers": [
+            3,
+            4,
+            28,
+            29,
+            31,
+            32
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "C",
+          "type": "자동",
+          "numbers": [
+            5,
+            14,
+            24,
+            28,
+            35,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "D",
+          "type": "자동",
+          "numbers": [
+            4,
+            5,
+            7,
+            18,
+            22,
+            37
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "E",
+          "type": "자동",
+          "numbers": [
+            11,
+            22,
+            24,
+            30,
+            37,
+            38
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        }
+      ],
+      "winInfo": null
+    },
+    {
+      "acc": "계정 1",
+      "ntslOrdrNo": "2026022400554686232",
+      "buyDate": "2026-02-24",
+      "round": 1213,
+      "drawDate": "2026/02/28",
+      "drawed": true,
+      "winTotalAmt": 0,
+      "games": [
+        {
+          "idx": "A",
+          "type": "자동",
+          "numbers": [
+            1,
+            6,
+            12,
+            13,
+            25,
+            32
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "B",
+          "type": "자동",
+          "numbers": [
+            1,
+            10,
+            16,
+            22,
+            24,
+            37
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "C",
+          "type": "자동",
+          "numbers": [
+            5,
+            16,
+            30,
+            39,
+            40,
+            44
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "D",
+          "type": "자동",
+          "numbers": [
+            1,
+            17,
+            26,
+            33,
+            36,
+            43
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        },
+        {
+          "idx": "E",
+          "type": "자동",
+          "numbers": [
+            1,
+            8,
+            9,
+            14,
+            33,
+            41
+          ],
+          "rank": 0,
+          "rankLabel": "낙첨"
+        }
+      ],
+      "winInfo": null
+    },
+    {
       "acc": "계정 2",
       "ntslOrdrNo": "2026051200569935242",
       "buyDate": "2026-05-12",
@@ -630,7 +925,7 @@
     "endDate": "20261112",
     "favs": []
   },
-  "last_run": "2026-05-18T12:42:10.331Z",
+  "last_run": "2026-05-19T21:50:05.739Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
