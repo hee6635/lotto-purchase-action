@@ -580,8 +580,8 @@
       "buyDate": "2026-06-03",
       "round": 1227,
       "drawDate": "2026/06/06",
-      "drawed": false,
-      "winTotalAmt": 0,
+      "drawed": true,
+      "winTotalAmt": 5000,
       "games": [
         {
           "idx": "A",
@@ -1673,7 +1673,7 @@
     "endDate": "20261112",
     "favs": []
   },
-  "last_run": "2026-06-05T20:11:52.439Z",
+  "last_run": "2026-06-06T14:08:01.128Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
