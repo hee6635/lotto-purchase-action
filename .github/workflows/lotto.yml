@@ -31,22 +31,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          # 충돌 해결을 위해 전체 이력을 가져옵니다.
           fetch-depth: 0
 
       - name: Install dependencies
         run: npm ci
 
+      # 💡 [보강] 깃허브 cron 스케줄 문동을 더 확실하게 캐치하도록 보정
       - name: 스케줄에 따른 명령어 세팅
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "COMMAND=MANUAL" >> $GITHUB_ENV
-          elif [[ "${{ github.event.schedule }}" == "0 22 * * 0" ]]; then
+          elif [[ "${{ github.event.schedule }}" == *"0 22"* ]]; then
             echo "COMMAND=RECHARGE_ONLY" >> $GITHUB_ENV
-          elif [[ "${{ github.event.schedule }}" == "0 9 * * 1" ]]; then
+          elif [[ "${{ github.event.schedule }}" == *"0 9"* ]]; then
             echo "COMMAND=PURCHASE_AUTO" >> $GITHUB_ENV
-          elif [[ "${{ github.event.schedule }}" == "15 12 * * 6" ]]; then
+          elif [[ "${{ github.event.schedule }}" == *"15 12"* ]]; then
             echo "COMMAND=CHECK_WIN" >> $GITHUB_ENV
+          else
+            echo "COMMAND=MANUAL" >> $GITHUB_ENV
           fi
 
       # ─── [1] 계정 1 실행 단계 ───
@@ -89,25 +91,16 @@ jobs:
           github-token: ${{ github.token }}
           workflow-file: custom-workflows/02-manual-fixed-numbers.js
 
-      # ─── [3] 🛡️ 충돌 방지형 결과 저장 단계 ───
+      # ─── [3] 안전한 결과 장부 저장 ───
       - name: Save Result
         if: always()
         run: |
           git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          
           if [ -f "result.json" ]; then
-            # 1. 변경된 파일 스테이징
             git add result.json
-            
-            # 2. 커밋 시도 (변경사항 없으면 통과)
-            git commit -m "🤖 로또 장부 업데이트" || exit 0
-            
-            # 3. 🔥 핵심: rebase 시 충돌나면 '현재 로봇이 만든 파일(-X theirs)'을 우선 채택
-            # rebase 중에는 'theirs'가 현재 우리가 커밋하려는 최신 데이터입니다.
+            git commit -m "🤖 로또 장부 업데이트" || echo "변경사항 없음"
             git pull --rebase -X theirs origin main
-            
-            # 4. 최종 푸시
             git push origin main
           fi
