@@ -3,6 +3,14 @@
   "balance2": "0",
   "history": [
     {
+      "date": "2026-07-21T00:04:54.635Z",
+      "acc": "계정 2",
+      "status": "fail",
+      "message": "잔액 부족",
+      "games": [],
+      "isScheduled": false
+    },
+    {
       "date": "2026-06-30T09:01:46.465Z",
       "acc": "계정 2",
       "status": "success",
@@ -2115,7 +2123,7 @@
     "endDate": "20261112",
     "favs": []
   },
-  "last_run": "2026-07-12T22:40:26.002Z",
+  "last_run": "2026-07-21T00:04:55.821Z",
   "status": "success",
   "message": "1게임 구매 성공!"
 }
